@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 340">
+  <!-- 後ろ髪 -->
+  <ellipse cx="130" cy="128" rx="86" ry="92" fill="#6a4a9c"/>
+  <path d="M46,140 C34,220 44,292 66,324 C80,300 74,220 74,158 Z" fill="#6a4a9c"/>
+  <path d="M214,140 C226,220 216,292 194,324 C180,300 186,220 186,158 Z" fill="#6a4a9c"/>
+  <!-- 首・体 -->
+  <rect x="119" y="198" width="22" height="60" rx="9" fill="#ffe8da"/>
+  <path d="M68,340 C68,278 92,250 130,250 C168,250 192,278 192,340 Z" fill="#38294f"/>
+  <path d="M100,256 L130,290 L160,256" stroke="#f7b6d2" stroke-width="6" fill="none" stroke-linejoin="round"/>
+  <circle cx="130" cy="292" r="6" fill="#f7b6d2"/>
+  <!-- 顔 -->
+  <ellipse cx="130" cy="150" rx="60" ry="56" fill="#ffe8da"/>
+  <!-- 前髪 -->
+  <path d="M62,150 C58,84 88,56 130,56 C172,56 202,84 198,150
+           C186,126 176,122 166,134 C160,114 148,110 138,126
+           C128,108 112,110 104,130 C92,118 74,126 62,150 Z" fill="#8a63c9"/>
+  <path d="M64,138 C56,190 60,222 72,240 C82,220 80,178 80,148 Z" fill="#8a63c9"/>
+  <path d="M196,138 C204,190 200,222 188,240 C178,220 180,178 180,148 Z" fill="#8a63c9"/>
+  <path d="M126,56 C116,36 138,26 146,38 C136,36 132,44 134,54 Z" fill="#8a63c9"/>
+  <path d="M86,82 Q112,62 152,66" stroke="#b79ae0" stroke-width="5" fill="none" opacity="0.55" stroke-linecap="round"/>
+  <!-- 桜の髪飾り -->
+  <circle cx="180.0" cy="79.5" r="6" fill="#f7b6d2"/>
+<circle cx="171.9" cy="85.4" r="6" fill="#f7b6d2"/>
+<circle cx="175.0" cy="94.9" r="6" fill="#f7b6d2"/>
+<circle cx="185.0" cy="94.9" r="6" fill="#f7b6d2"/>
+<circle cx="188.1" cy="85.4" r="6" fill="#f7b6d2"/>
+<circle cx="180" cy="88" r="3.2" fill="#ffd97a"/>
+  <!-- 頬紅 -->
+  <ellipse cx="97" cy="182" rx="11" ry="6" fill="#f7b6d2" opacity="0.3"/>
+  <ellipse cx="163" cy="182" rx="11" ry="6" fill="#f7b6d2" opacity="0.3"/>
+  <!-- 表情 -->
+  
+        <path d="M92,128 Q103,122 114,128" stroke="#3a2b52" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        <path d="M146,128 Q157,122 168,128" stroke="#3a2b52" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        
+  
+    <path d="M90,148 Q103,141 116,148"
+          stroke="#3a2b52" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+    <ellipse cx="106" cy="156" rx="10" ry="13" fill="#4a2f72"/>
+    <circle cx="103" cy="152" r="3.4" fill="#fff" opacity="0.95"/>
+    <circle cx="109" cy="160" r="1.7" fill="#fff" opacity="0.6"/>
+    
+    <path d="M144,148 Q157,141 170,148"
+          stroke="#3a2b52" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+    <ellipse cx="160" cy="156" rx="10" ry="13" fill="#4a2f72"/>
+    <circle cx="157" cy="152" r="3.4" fill="#fff" opacity="0.95"/>
+    <circle cx="163" cy="160" r="1.7" fill="#fff" opacity="0.6"/>
+    
+  <path d="M124,195 L136,195" stroke="#c9556f" stroke-width="3" fill="none" stroke-linecap="round"/>
+  
+    <circle cx="196" cy="58" r="4" fill="#cbb6ef" opacity="0.85"/>
+    <circle cx="208" cy="44" r="5.5" fill="#cbb6ef" opacity="0.85"/>
+    <circle cx="222" cy="27" r="7" fill="#cbb6ef" opacity="0.85"/>
+    
+</svg>

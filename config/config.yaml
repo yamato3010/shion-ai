@@ -1,0 +1,31 @@
+# shion-ai 全体設定
+# ${VAR} は .env / 環境変数から展開される(docs/08_security.md)
+
+llm:
+  providers:
+    # OpenAI互換の chat/completions エンドポイントを持つプロバイダを定義する。
+    # api_key が空のプロバイダは「未設定」として扱われ、フォールバックに移る。
+    openai:
+      api_key: ${OPENAI_API_KEY}
+      base_url: https://api.openai.com/v1
+    gemini:
+      # Gemini は OpenAI 互換エンドポイントを利用
+      api_key: ${GEMINI_API_KEY}
+      base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    ollama:
+      api_key: ollama # ダミー値(Ollamaはキー不要)
+      base_url: http://localhost:11434/v1
+
+  # 用途別モデル割当。"provider/model" 形式(docs/04_llm_provider.md)
+  # 例: gemini/gemini-2.0-flash, ollama/qwen3:8b
+  models:
+    chat: openai/gpt-4o-mini
+
+  # chat モデルが使えないときのフォールバック順。
+  # mock/echo は APIキー無しで動作確認するための組み込みモック。
+  fallback:
+    - mock/echo
+
+chat:
+  # 応答生成時にコンテキストへ含める直近メッセージ数
+  history_limit: 30
