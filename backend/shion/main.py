@@ -2,13 +2,15 @@
 
     cd backend && uvicorn shion.main:app --reload --port 8000
 
-FastAPI(REST + WebSocket)+ Scheduler + プラグイン基盤。
-Discord Bot はフェーズ2でここに同居させる(docs/02 §7)。
+FastAPI(REST + WebSocket)+ Discord Bot + Scheduler + プラグイン基盤を
+単一 asyncio イベントループに同居させる(docs/02 §7)。
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -17,14 +19,17 @@ from fastapi.staticfiles import StaticFiles
 from shion.config import Settings
 from shion.core.agent import AgentEngine
 from shion.core.events import EventBus
+from shion.core.memory import MemoryManager
 from shion.core.notifications import NotificationRouter
 from shion.core.persona import Persona
 from shion.core.scheduler import Scheduler
 from shion.db.session import init_db, make_engine, make_session_factory
-from shion.interfaces.web import auth, conversations, plugins, ws
+from shion.interfaces.web import auth, conversations, memories, plugins, ws
 from shion.interfaces.web.ws_manager import WSManager
 from shion.llm import LLMRouter
 from shion.plugins import PluginManager
+
+logger = logging.getLogger(__name__)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -57,17 +62,20 @@ def create_app() -> FastAPI:
         app.state.scheduler = scheduler
         app.state.llm_router = llm_router
         app.state.plugin_manager = plugin_manager
+        memory = MemoryManager(sessions, llm_router)
+        app.state.memory = memory
         app.state.persona = Persona.load(settings.root / "config" / "persona.yaml")
         app.state.agent = AgentEngine(
             router=llm_router,
             persona=app.state.persona,
             session_factory=sessions,
             plugin_manager=plugin_manager,
+            memory=memory,
             history_limit=int(settings.chat.get("history_limit", 30)),
         )
 
-        # 通知ルーティング(notification.send → web へ配送)
-        NotificationRouter(
+        # 通知ルーティング(notification.send → web / discord_dm へ配送)
+        notification_router = NotificationRouter(
             events,
             (settings.config.get("notifications") or {}).get("routes"),
             ws_manager,
@@ -75,7 +83,33 @@ def create_app() -> FastAPI:
 
         await plugin_manager.setup()
         scheduler.start()
+
+        # Discord Bot(DISCORD_BOT_TOKEN 設定時のみ起動)
+        discord_adapter = None
+        discord_task: asyncio.Task | None = None
+        token = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+        if token:
+            from shion.interfaces.discord.adapter import DiscordAdapter
+
+            discord_adapter = DiscordAdapter(
+                agent=app.state.agent,
+                plugin_manager=plugin_manager,
+                llm_router=llm_router,
+                memory=memory,
+                session_factory=sessions,
+                config=settings.config.get("discord") or {},
+            )
+            notification_router.set_discord(discord_adapter)
+            discord_task = asyncio.create_task(discord_adapter.run_forever(token))
+        else:
+            logger.info("DISCORD_BOT_TOKEN 未設定のため Discord Bot は起動しません")
+
         yield
+
+        if discord_adapter is not None:
+            await discord_adapter.close()
+        if discord_task is not None:
+            discord_task.cancel()
         scheduler.shutdown()
         await llm_router.close()
         await engine.dispose()
@@ -94,6 +128,12 @@ def create_app() -> FastAPI:
         plugins.router,
         prefix="/api",
         tags=["plugins"],
+        dependencies=[Depends(auth.require_auth)],
+    )
+    app.include_router(
+        memories.router,
+        prefix="/api",
+        tags=["memories"],
         dependencies=[Depends(auth.require_auth)],
     )
     app.include_router(ws.router, prefix="/api")

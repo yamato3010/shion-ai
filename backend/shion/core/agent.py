@@ -1,7 +1,7 @@
 """Agent Engine: 1メッセージの応答オーケストレーション(docs/02 §5.1)
 
-フェーズ1の範囲: 履歴ロード → プロンプト組立 → 生成 →(ツール実行 → 再生成)ループ
-→ 感情タグ抽出 → 永続化。長期記憶はフェーズ2で追加する。
+履歴ロード → 長期記憶検索 → プロンプト組立 → 生成 →(ツール実行 → 再生成)ループ
+→ 感情タグ抽出 → 永続化 → 記憶抽出(非同期)。
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import AsyncIterator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from shion.core.memory import MemoryManager, spawn_extraction
 from shion.core.persona import EmotionTagParser, Persona
 from shion.db.models import Conversation, Message
 from shion.llm import LLMRouter
@@ -30,13 +31,16 @@ class AgentEngine:
         persona: Persona,
         session_factory: async_sessionmaker,
         plugin_manager=None,
+        memory: MemoryManager | None = None,
         history_limit: int = 30,
     ) -> None:
         self._router = router
         self._persona = persona
         self._sessions = session_factory
         self._plugins = plugin_manager
+        self._memory = memory
         self._history_limit = history_limit
+        self._bg_tasks: set = set()  # 記憶抽出タスクのGC防止
 
     async def stream_reply(
         self,
@@ -54,7 +58,16 @@ class AgentEngine:
             await db.commit()
             history = await self._load_history(db, conversation.id)
 
-        messages = [LLMMessage(role="system", content=self._persona.build_system_prompt()), *history]
+        system_prompt = self._persona.build_system_prompt()
+        if self._memory:
+            try:
+                memories = await self._memory.search(text, k=5)
+                if memories:
+                    system_prompt += "\n\n" + self._memory.format_for_prompt(memories)
+            except Exception:  # noqa: BLE001 - 記憶検索の失敗で会話を止めない
+                logger.exception("長期記憶の検索に失敗")
+
+        messages = [LLMMessage(role="system", content=system_prompt), *history]
         toolspecs = self._plugins.get_toolspecs() if self._plugins else []
 
         reply_parts: list[str] = []
@@ -131,6 +144,9 @@ class AgentEngine:
             db.add(msg)
             await db.commit()
             message_id = msg.id
+
+        if self._memory and reply:
+            spawn_extraction(self._memory, text, reply, self._bg_tasks)
 
         yield {
             "type": "done",

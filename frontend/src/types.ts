@@ -65,6 +65,15 @@ export interface PluginInfo {
   jobs: JobInfo[];
 }
 
+export interface Memory {
+  id: number;
+  content: string;
+  category: string;
+  source: string;
+  created_at: string;
+  last_accessed_at: string | null;
+}
+
 export interface JobLogEntry {
   id: number;
   job_name: string;

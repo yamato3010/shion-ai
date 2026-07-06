@@ -1,0 +1,12 @@
+name: reminder
+display_name: "リマインダー"
+version: 1.0.0
+description: "「〜をリマインドして」の自然言語リマインダー。毎分チェックして時刻になったら通知する"
+author: yamato
+api_version: 1
+config_schema:
+  notify_channel:
+    type: string
+    default: "important"
+    description: "通知に使う論理チャネル(config.yaml の notifications.routes に対応)"
+permissions: []

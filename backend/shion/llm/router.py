@@ -16,6 +16,7 @@ class LLMRouter:
     def __init__(self, llm_config: dict | None) -> None:
         self._config = llm_config or {}
         self._providers: dict[str, LLMProvider] = {}
+        self._embed_warned = False
 
     def _get_provider(self, name: str) -> LLMProvider:
         if name in self._providers:
@@ -43,6 +44,10 @@ class LLMRouter:
         if not specs:
             specs = ["mock/echo"]
         return specs
+
+    def primary_spec(self, purpose: str = "chat") -> str:
+        """purpose の本命モデル("provider/model")。/status 表示や mock 判定に使う"""
+        return self._model_specs(purpose)[0]
 
     async def stream(
         self,
@@ -75,6 +80,22 @@ class LLMRouter:
                 logger.warning("%s での生成に失敗、フォールバックします: %s", spec, e)
 
         raise LLMError(f"すべてのLLMプロバイダで生成に失敗しました: {last_error}") from last_error
+
+    async def embed(self, texts: list[str]) -> list[list[float]] | None:
+        """埋め込みベクトルを返す。models.embedding 未設定・失敗時は None
+        (呼び出し側はキーワード検索等にフォールバックする)"""
+        spec = (self._config.get("models") or {}).get("embedding")
+        if not spec or not texts:
+            return None
+        provider_name, _, model = spec.partition("/")
+        try:
+            provider = self._get_provider(provider_name)
+            return await provider.embed(texts, model=model)
+        except Exception as e:  # noqa: BLE001 - 埋め込み不可は致命的でない
+            if not self._embed_warned:
+                self._embed_warned = True
+                logger.warning("埋め込み(%s)が使えないためキーワード検索にフォールバック: %s", spec, e)
+            return None
 
     async def close(self) -> None:
         for provider in self._providers.values():

@@ -92,6 +92,18 @@ class OpenAICompatProvider(LLMProvider):
         except httpx.HTTPError as e:
             raise LLMError(f"{self.name}/{model} への接続に失敗: {e}") from e
 
+    async def embed(self, texts: list[str], model: str) -> list[list[float]]:
+        if not self._api_key:
+            raise LLMError(f"プロバイダ '{self.name}' のAPIキーが未設定です(.env を確認)")
+        try:
+            resp = await self._client.post("/embeddings", json={"model": model, "input": texts})
+        except httpx.HTTPError as e:
+            raise LLMError(f"{self.name}/{model} への接続に失敗: {e}") from e
+        if resp.status_code >= 400:
+            raise LLMError(f"{self.name}/{model} HTTP {resp.status_code}: {resp.text[:300]}")
+        data = sorted(resp.json()["data"], key=lambda d: d["index"])
+        return [d["embedding"] for d in data]
+
     @staticmethod
     def _to_message_payload(m: Message) -> dict:
         payload: dict = {"role": m.role, "content": m.content}

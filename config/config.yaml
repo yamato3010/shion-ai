@@ -20,6 +20,11 @@ llm:
   # 例: gemini/gemini-2.0-flash, ollama/qwen3:8b
   models:
     chat: openai/gpt-4o-mini
+    # 記憶抽出(裏方処理。安いモデルやローカルLLM推奨。未指定なら chat と同じ)
+    memory: openai/gpt-4o-mini
+    # 長期記憶の類似検索用の埋め込みモデル。
+    # 未設定・キー無しの場合はキーワード検索にフォールバックする。
+    embedding: openai/text-embedding-3-small
 
   # chat モデルが使えないときのフォールバック順。
   # mock/echo は APIキー無しで動作確認するための組み込みモック。
@@ -30,11 +35,20 @@ chat:
   # 応答生成時にコンテキストへ含める直近メッセージ数
   history_limit: 30
 
+# Discord Bot(.env に DISCORD_BOT_TOKEN を設定すると起動する)
+discord:
+  # あなたのDiscordユーザーID(開発者モードでプロフィール右クリック→IDコピー)。
+  # 未設定のままDMすると、設定すべきIDをBotが教えてくれる。
+  owner_id: ${DISCORD_OWNER_ID}
+  # スラッシュコマンドを即時反映したいサーバーのID(任意)。
+  # 未設定はグローバル登録になり、反映に最大1時間かかる。
+  command_guild_id: ${DISCORD_GUILD_ID}
+
 # 通知ルーティング(docs/03 §4)
 # プラグインは論理チャネルへ通知を発行し、配送先はここで決める。
-# 現在使える配送先: web(Web UIのトースト)。discord はフェーズ2で追加。
+# 配送先: web(Web UIのトースト)/ discord_dm(オーナーへのDM。Bot稼働時のみ)
 notifications:
   routes:
-    daily: [web]
-    important: [web]
+    daily: [web, discord_dm]
+    important: [web, discord_dm]
     default: [web]

@@ -1,4 +1,4 @@
-import type { ChatMessage, Conversation, JobLogEntry, PluginInfo } from "../types";
+import type { ChatMessage, Conversation, JobLogEntry, Memory, PluginInfo } from "../types";
 
 class ApiError extends Error {
   constructor(
@@ -75,3 +75,16 @@ export const runPluginJob = (name: string, jobName: string) =>
 
 export const getPluginLogs = (name: string) =>
   api<JobLogEntry[]>(`/api/plugins/${name}/logs`);
+
+// --- 長期記憶 ---
+
+export const listMemories = () => api<Memory[]>("/api/memories");
+
+export const addMemory = (content: string, category: string) =>
+  api<Memory>("/api/memories", {
+    method: "POST",
+    body: JSON.stringify({ content, category }),
+  });
+
+export const deleteMemory = (id: number) =>
+  api<{ ok: boolean }>(`/api/memories/${id}`, { method: "DELETE" });

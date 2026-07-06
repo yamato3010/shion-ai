@@ -73,6 +73,14 @@ class RegisteredTool:
 
 
 @dataclass
+class RegisteredCommand:
+    plugin_name: str
+    name: str
+    description: str
+    fn: Callable
+
+
+@dataclass
 class PluginInfo:
     name: str
     path: Path
@@ -107,6 +115,7 @@ class PluginManager:
         self._scheduler = scheduler
         self.plugins: dict[str, PluginInfo] = {}
         self._tools: dict[str, RegisteredTool] = {}
+        self._commands: dict[str, RegisteredCommand] = {}
 
     # --- 起動処理 ---
 
@@ -197,6 +206,7 @@ class PluginManager:
         info = self._require(name)
         self._scheduler.unregister_plugin(name)
         self._tools = {k: v for k, v in self._tools.items() if v.plugin_name != name}
+        self._commands = {k: v for k, v in self._commands.items() if v.plugin_name != name}
         info.jobs = []
         info.commands = []
         info.tool_names = []
@@ -261,6 +271,23 @@ class PluginManager:
         if registered is None:
             raise KeyError(f"ツール '{tool_name}' は存在しません")
         return await asyncio.wait_for(registered.fn(**args), timeout=TOOL_TIMEOUT_SEC)
+
+    # --- コマンド実行(Discordアダプタから利用) ---
+
+    def get_commands(self) -> list[RegisteredCommand]:
+        return list(self._commands.values())
+
+    async def execute_command(self, command_name: str, text: str = "") -> Any:
+        registered = self._commands.get(command_name)
+        if registered is None:
+            raise KeyError(f"コマンド '{command_name}' は存在しません")
+        # 引数を1つ以上取るコマンドには入力テキストをそのまま渡す
+        params = inspect.signature(registered.fn).parameters
+        if params:
+            coro = registered.fn(text)
+        else:
+            coro = registered.fn()
+        return await asyncio.wait_for(coro, timeout=TOOL_TIMEOUT_SEC)
 
     # --- 内部処理 ---
 
@@ -338,4 +365,16 @@ class PluginManager:
                 self._scheduler.register(info.name, attr_name, cron, member)
                 info.jobs.append({"name": attr_name, "cron": cron})
             if hasattr(fn, ATTR_COMMAND):
-                info.commands.append(getattr(fn, ATTR_COMMAND))
+                meta = getattr(fn, ATTR_COMMAND)
+                if meta["name"] in self._commands:
+                    raise ValueError(
+                        f"コマンド名 '{meta['name']}' が "
+                        f"{self._commands[meta['name']].plugin_name} と重複しています"
+                    )
+                self._commands[meta["name"]] = RegisteredCommand(
+                    plugin_name=info.name,
+                    name=meta["name"],
+                    description=meta["description"],
+                    fn=member,
+                )
+                info.commands.append(meta)

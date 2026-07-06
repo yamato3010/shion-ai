@@ -53,6 +53,21 @@ class JobLog(Base):
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class Memory(Base):
+    """長期記憶(docs/02 §5.3)。埋め込みはJSON配列で保持し、検索はプロセス内で行う"""
+
+    __tablename__ = "memories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    content: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(24), default="other")
+    # 埋め込みベクトル(JSON配列)。埋め込みモデル未設定時は null でキーワード検索にフォールバック
+    embedding_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), default="chat")  # chat | manual
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Message(Base):
     __tablename__ = "messages"
 
