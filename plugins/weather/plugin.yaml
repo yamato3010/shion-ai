@@ -1,0 +1,21 @@
+name: weather
+display_name: 天気予報
+version: 1.0.0
+description: Open-Meteo による天気予報の照会と毎朝の通知(APIキー不要)
+author: yamato
+api_version: 1
+config_schema:
+  location:
+    type: string
+    default: "Tokyo"
+    description: "デフォルトの地域(日本語可: 例「東京」「大阪」)"
+  morning_notify:
+    type: boolean
+    default: true
+    description: "毎朝の天気通知を有効にする"
+  notify_time:
+    type: string
+    default: "07:00"
+    description: "通知時刻(HH:MM)"
+permissions:
+  - network

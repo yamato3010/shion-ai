@@ -7,12 +7,16 @@ Web UI と Discord(予定)から、同じ人格・同じ記憶で対話できる
 
 ## 現在の実装状況
 
-フェーズ0(骨格)+ 感情システムまで実装済み:
+フェーズ1(プラグイン基盤)まで実装済み:
 
 - Web UI(React)でのチャット。立ち絵 + 表情差分(7種)が応答の感情に連動
 - FastAPI + WebSocket によるストリーミング応答
 - LLM抽象化層: OpenAI / Gemini / Ollama(OpenAI互換API)+ フォールバック
 - SQLite への会話履歴保存、パスワード認証
+- **プラグインシステム**: `plugins/` に置くだけで Tool(function calling)/ Job(cron)/ 通知を追加可能
+- **管理画面**(🔌タブ): プラグインの有効化・設定編集・ジョブ手動実行・実行ログ
+- **通知**: プラグイン発の通知が Web UI のトーストに届く
+- 同梱プラグイン: `weather`(天気予報。APIキー不要、Open-Meteo)
 
 進捗の詳細は [docs/09_roadmap.md](./docs/09_roadmap.md)。
 

@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { deleteConversation, getMessages, listConversations, logout } from "../api/client";
-import { ChatSocket, openChatSocket } from "../api/ws";
-import type { ChatMessage, Conversation, Emotion } from "../types";
+import { MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
+import { deleteConversation, getMessages, listConversations } from "../api/client";
+import { ChatSocket } from "../api/ws";
+import type { ChatMessage, Conversation, Emotion, ServerEvent } from "../types";
 import CharacterView from "./CharacterView";
 import ChatWindow from "./ChatWindow";
 import Sidebar from "./Sidebar";
 
-export default function ChatPage({ onLogout }: { onLogout: () => void }) {
+interface Props {
+  socketRef: MutableRefObject<ChatSocket | null>;
+  chatHandlerRef: MutableRefObject<((ev: ServerEvent) => void) | null>;
+}
+
+export default function ChatPage({ socketRef, chatHandlerRef }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -14,7 +19,7 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
   const [emotion, setEmotion] = useState<Emotion>("normal");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const socketRef = useRef<ChatSocket | null>(null);
+  const [runningTool, setRunningTool] = useState<string | null>(null);
   const streamingRef = useRef("");
 
   const refreshConversations = useCallback(() => {
@@ -28,7 +33,7 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
   }, [refreshConversations]);
 
   useEffect(() => {
-    const socket = openChatSocket((event) => {
+    chatHandlerRef.current = (event: ServerEvent) => {
       switch (event.type) {
         case "session":
           setCurrentId(event.conversation_id);
@@ -41,10 +46,14 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
           streamingRef.current += event.text;
           setStreaming(streamingRef.current);
           break;
+        case "tool_status":
+          setRunningTool(event.state === "running" ? event.name : null);
+          break;
         case "done": {
           const content = streamingRef.current;
           streamingRef.current = "";
           setStreaming("");
+          setRunningTool(null);
           setMessages((prev) => [
             ...prev,
             { role: "assistant", content, emotion: event.emotion },
@@ -55,15 +64,17 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
         case "error":
           streamingRef.current = "";
           setStreaming("");
+          setRunningTool(null);
           setBusy(false);
           setEmotion("troubled");
           setError(event.message);
           break;
       }
-    });
-    socketRef.current = socket;
-    return () => socket.close();
-  }, [refreshConversations]);
+    };
+    return () => {
+      chatHandlerRef.current = null;
+    };
+  }, [chatHandlerRef, refreshConversations]);
 
   const selectConversation = async (id: number) => {
     setCurrentId(id);
@@ -95,11 +106,6 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
     socketRef.current?.sendChat(text, currentId);
   };
 
-  const handleLogout = async () => {
-    await logout();
-    onLogout();
-  };
-
   return (
     <div className="chat-layout">
       <Sidebar
@@ -108,7 +114,6 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
         onSelect={selectConversation}
         onNew={newConversation}
         onDelete={removeConversation}
-        onLogout={handleLogout}
       />
       <CharacterView emotion={emotion} busy={busy} />
       <ChatWindow
@@ -116,6 +121,7 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
         streaming={streaming}
         busy={busy}
         error={error}
+        runningTool={runningTool}
         onSend={send}
       />
     </div>

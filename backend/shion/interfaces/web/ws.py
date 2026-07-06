@@ -1,7 +1,8 @@
 """チャット用 WebSocket(docs/05 §1.4)
 
 クライアント → サーバ: {"type": "chat", "conversation_id": int | null, "text": str}
-サーバ → クライアント: session / emotion / chunk / done / error イベント
+サーバ → クライアント: session / emotion / chunk / tool_status / done / error /
+                        notification(プラグイン通知のプッシュ)
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ async def chat_ws(websocket: WebSocket):
         return
 
     await websocket.accept()
+    manager = websocket.app.state.ws_manager
+    manager.register(websocket)
     agent = websocket.app.state.agent
     try:
         while True:
@@ -39,9 +42,11 @@ async def chat_ws(websocket: WebSocket):
                 text=text,
                 interface="web",
             ):
-                await websocket.send_json(event)
+                await manager.send(websocket, event)
     except WebSocketDisconnect:
         pass
     except Exception:  # noqa: BLE001
         logger.exception("WebSocketハンドラで予期しないエラー")
         await websocket.close(code=1011)
+    finally:
+        manager.unregister(websocket)

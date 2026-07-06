@@ -11,6 +11,10 @@ from typing import AsyncIterator
 class Message:
     role: str  # "system" | "user" | "assistant" | "tool"
     content: str
+    # assistant がツールを呼ぶとき(OpenAI形式: [{id, type, function:{name, arguments}}])
+    tool_calls: list[dict] | None = None
+    # role="tool" の結果メッセージが応答するツール呼び出しID
+    tool_call_id: str | None = None
 
 
 @dataclass

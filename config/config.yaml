@@ -29,3 +29,12 @@ llm:
 chat:
   # 応答生成時にコンテキストへ含める直近メッセージ数
   history_limit: 30
+
+# 通知ルーティング(docs/03 §4)
+# プラグインは論理チャネルへ通知を発行し、配送先はここで決める。
+# 現在使える配送先: web(Web UIのトースト)。discord はフェーズ2で追加。
+notifications:
+  routes:
+    daily: [web]
+    important: [web]
+    default: [web]

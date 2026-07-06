@@ -24,6 +24,35 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class PluginSetting(Base):
+    __tablename__ = "plugin_settings"
+
+    plugin_name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(default=False)  # 初回発見時は無効(docs/03 §3)
+    config_json: Mapped[str] = mapped_column(Text, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class PluginKV(Base):
+    __tablename__ = "plugin_kv"
+
+    plugin_name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    value_json: Mapped[str] = mapped_column(Text, default="null")
+
+
+class JobLog(Base):
+    __tablename__ = "job_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    plugin_name: Mapped[str] = mapped_column(String(64), index=True)
+    job_name: Mapped[str] = mapped_column(String(64))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="running")  # running | success | error
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class Message(Base):
     __tablename__ = "messages"
 

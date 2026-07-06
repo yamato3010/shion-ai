@@ -6,10 +6,18 @@ interface Props {
   streaming: string;
   busy: boolean;
   error: string | null;
+  runningTool: string | null;
   onSend: (text: string) => void;
 }
 
-export default function ChatWindow({ messages, streaming, busy, error, onSend }: Props) {
+export default function ChatWindow({
+  messages,
+  streaming,
+  busy,
+  error,
+  runningTool,
+  onSend,
+}: Props) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -51,7 +59,10 @@ export default function ChatWindow({ messages, streaming, busy, error, onSend }:
             <div className="bubble is-streaming">{streaming}</div>
           </div>
         )}
-        {busy && !streaming && (
+        {runningTool && (
+          <div className="tool-status-line">🔧 {runningTool} を実行中…</div>
+        )}
+        {busy && !streaming && !runningTool && (
           <div className="bubble-row assistant">
             <div className="bubble typing-indicator">
               <span />

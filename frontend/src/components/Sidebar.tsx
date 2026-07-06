@@ -6,17 +6,9 @@ interface Props {
   onSelect: (id: number) => void;
   onNew: () => void;
   onDelete: (id: number) => void;
-  onLogout: () => void;
 }
 
-export default function Sidebar({
-  conversations,
-  currentId,
-  onSelect,
-  onNew,
-  onDelete,
-  onLogout,
-}: Props) {
+export default function Sidebar({ conversations, currentId, onSelect, onNew, onDelete }: Props) {
   return (
     <nav className="sidebar">
       <div className="sidebar-header">
@@ -46,9 +38,6 @@ export default function Sidebar({
           </li>
         ))}
       </ul>
-      <button className="logout-button" onClick={onLogout}>
-        ログアウト
-      </button>
     </nav>
   );
 }

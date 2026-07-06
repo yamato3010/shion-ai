@@ -1,11 +1,12 @@
 """Agent Engine: 1メッセージの応答オーケストレーション(docs/02 §5.1)
 
-フェーズ0の範囲: 履歴ロード → プロンプト組立 → ストリーミング生成 → 感情タグ抽出 → 永続化。
-ツール実行・長期記憶はフェーズ1/2で追加する。
+フェーズ1の範囲: 履歴ロード → プロンプト組立 → 生成 →(ツール実行 → 再生成)ループ
+→ 感情タグ抽出 → 永続化。長期記憶はフェーズ2で追加する。
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import AsyncIterator
 
@@ -19,6 +20,8 @@ from shion.llm import Message as LLMMessage
 
 logger = logging.getLogger(__name__)
 
+MAX_TOOL_ROUNDS = 5
+
 
 class AgentEngine:
     def __init__(
@@ -26,11 +29,13 @@ class AgentEngine:
         router: LLMRouter,
         persona: Persona,
         session_factory: async_sessionmaker,
+        plugin_manager=None,
         history_limit: int = 30,
     ) -> None:
         self._router = router
         self._persona = persona
         self._sessions = session_factory
+        self._plugins = plugin_manager
         self._history_limit = history_limit
 
     async def stream_reply(
@@ -50,31 +55,71 @@ class AgentEngine:
             history = await self._load_history(db, conversation.id)
 
         messages = [LLMMessage(role="system", content=self._persona.build_system_prompt()), *history]
+        toolspecs = self._plugins.get_toolspecs() if self._plugins else []
 
-        parser = EmotionTagParser(self._persona.emotions)
         reply_parts: list[str] = []
-        try:
-            async for chunk in self._router.stream(messages, purpose="chat"):
-                if not chunk.text:
-                    continue
-                out, emotion = parser.feed(chunk.text)
-                if emotion:
-                    yield {"type": "emotion", "value": emotion}
-                if out:
-                    reply_parts.append(out)
-                    yield {"type": "chunk", "text": out}
-        except Exception as e:  # noqa: BLE001 - 失敗はイベントとしてクライアントへ返す
-            logger.exception("応答生成に失敗")
-            yield {"type": "error", "message": str(e)}
-            return
+        final_emotion: str | None = None
 
-        tail = parser.flush()
-        if tail:
-            reply_parts.append(tail)
-            yield {"type": "chunk", "text": tail}
+        for _round in range(MAX_TOOL_ROUNDS):
+            # 感情タグは各生成ラウンドの冒頭に付くため、ラウンドごとにパースする
+            parser = EmotionTagParser(self._persona.emotions)
+            round_parts: list[str] = []
+            tool_calls: list[dict] = []
+            try:
+                async for chunk in self._router.stream(
+                    messages, purpose="chat", tools=toolspecs or None
+                ):
+                    if chunk.text:
+                        out, emotion = parser.feed(chunk.text)
+                        if emotion:
+                            final_emotion = emotion
+                            yield {"type": "emotion", "value": emotion}
+                        if out:
+                            round_parts.append(out)
+                            yield {"type": "chunk", "text": out}
+                    if chunk.tool_call and chunk.tool_call.get("name"):
+                        tool_calls.append(chunk.tool_call)
+            except Exception as e:  # noqa: BLE001 - 失敗はイベントとしてクライアントへ返す
+                logger.exception("応答生成に失敗")
+                yield {"type": "error", "message": str(e)}
+                return
+
+            tail = parser.flush()
+            if tail:
+                round_parts.append(tail)
+                yield {"type": "chunk", "text": tail}
+            reply_parts.extend(round_parts)
+
+            if not tool_calls:
+                break
+
+            # ツール実行 → 結果をコンテキストに積んで再生成
+            messages.append(
+                LLMMessage(
+                    role="assistant",
+                    content="".join(round_parts),
+                    tool_calls=[
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tc["name"], "arguments": tc["arguments"] or "{}"},
+                        }
+                        for tc in tool_calls
+                    ],
+                )
+            )
+            for tc in tool_calls:
+                yield {"type": "tool_status", "name": tc["name"], "state": "running"}
+                state, result_text = await self._run_tool(tc)
+                yield {"type": "tool_status", "name": tc["name"], "state": state}
+                messages.append(
+                    LLMMessage(role="tool", content=result_text, tool_call_id=tc["id"])
+                )
+        else:
+            logger.warning("ツール実行が%d回続いたため打ち切り", MAX_TOOL_ROUNDS)
 
         reply = "".join(reply_parts)
-        emotion = parser.emotion or "normal"
+        emotion = final_emotion or "normal"
         async with self._sessions() as db:
             msg = Message(
                 conversation_id=conversation.id,
@@ -93,6 +138,22 @@ class AgentEngine:
             "message_id": message_id,
             "emotion": emotion,
         }
+
+    async def _run_tool(self, tool_call: dict) -> tuple[str, str]:
+        """ツールを実行し (状態, LLMへ返す結果文字列) を返す。例外は結果文字列に変換"""
+        name = tool_call["name"]
+        try:
+            args = json.loads(tool_call.get("arguments") or "{}")
+        except json.JSONDecodeError:
+            return "error", f"ツール引数のJSONが不正です: {tool_call.get('arguments')}"
+        try:
+            result = await self._plugins.execute_tool(name, args)
+        except Exception as e:  # noqa: BLE001 - ツール失敗はLLMに伝えて会話は継続
+            logger.exception("ツール %s の実行に失敗", name)
+            return "error", f"ツール実行エラー: {e}"
+        if isinstance(result, str):
+            return "done", result
+        return "done", json.dumps(result, ensure_ascii=False, default=str)
 
     async def _get_or_create_conversation(
         self, db, conversation_id: int | None, first_text: str

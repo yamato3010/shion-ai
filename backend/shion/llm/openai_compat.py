@@ -39,7 +39,7 @@ class OpenAICompatProvider(LLMProvider):
 
         payload: dict = {
             "model": model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": [self._to_message_payload(m) for m in messages],
             "stream": True,
             **params,
         }
@@ -52,6 +52,8 @@ class OpenAICompatProvider(LLMProvider):
                 for t in tools
             ]
 
+        # ツール呼び出しはdeltaに分割されて届くため、indexごとに集約する
+        tool_calls_acc: dict[int, dict] = {}
         try:
             async with self._client.stream("POST", "/chat/completions", json=payload) as resp:
                 if resp.status_code >= 400:
@@ -71,11 +73,33 @@ class OpenAICompatProvider(LLMProvider):
                     text = delta.get("content")
                     if text:
                         yield GenerationChunk(text=text)
+                    for tc in delta.get("tool_calls") or []:
+                        acc = tool_calls_acc.setdefault(
+                            tc.get("index", 0), {"id": None, "name": "", "arguments": ""}
+                        )
+                        if tc.get("id"):
+                            acc["id"] = tc["id"]
+                        fn = tc.get("function") or {}
+                        if fn.get("name"):
+                            acc["name"] = fn["name"]
+                        acc["arguments"] += fn.get("arguments") or ""
                     finish = choices[0].get("finish_reason")
                     if finish:
+                        for _, acc in sorted(tool_calls_acc.items()):
+                            yield GenerationChunk(tool_call=acc)
+                        tool_calls_acc = {}
                         yield GenerationChunk(finish_reason=finish, usage=obj.get("usage"))
         except httpx.HTTPError as e:
             raise LLMError(f"{self.name}/{model} への接続に失敗: {e}") from e
+
+    @staticmethod
+    def _to_message_payload(m: Message) -> dict:
+        payload: dict = {"role": m.role, "content": m.content}
+        if m.tool_calls:
+            payload["tool_calls"] = m.tool_calls
+        if m.tool_call_id:
+            payload["tool_call_id"] = m.tool_call_id
+        return payload
 
     async def close(self) -> None:
         await self._client.aclose()

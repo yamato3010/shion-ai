@@ -2,8 +2,8 @@
 
     cd backend && uvicorn shion.main:app --reload --port 8000
 
-フェーズ0: FastAPI(REST + WebSocket)のみ。
-Discord Bot / Scheduler はフェーズ1以降でここに同居させる(docs/02 §7)。
+FastAPI(REST + WebSocket)+ Scheduler + プラグイン基盤。
+Discord Bot はフェーズ2でここに同居させる(docs/02 §7)。
 """
 
 from __future__ import annotations
@@ -16,10 +16,15 @@ from fastapi.staticfiles import StaticFiles
 
 from shion.config import Settings
 from shion.core.agent import AgentEngine
+from shion.core.events import EventBus
+from shion.core.notifications import NotificationRouter
 from shion.core.persona import Persona
+from shion.core.scheduler import Scheduler
 from shion.db.session import init_db, make_engine, make_session_factory
-from shion.interfaces.web import auth, conversations, ws
+from shion.interfaces.web import auth, conversations, plugins, ws
+from shion.interfaces.web.ws_manager import WSManager
 from shion.llm import LLMRouter
+from shion.plugins import PluginManager
 
 logging.basicConfig(level=logging.INFO)
 
@@ -32,18 +37,47 @@ def create_app() -> FastAPI:
         engine = make_engine(settings.db_url)
         await init_db(engine)
 
+        sessions = make_session_factory(engine)
+        events = EventBus()
+        ws_manager = WSManager()
+        scheduler = Scheduler(sessions)
+        llm_router = LLMRouter(settings.llm)
+        plugin_manager = PluginManager(
+            plugins_dir=settings.root / "plugins",
+            session_factory=sessions,
+            llm=llm_router,
+            events=events,
+            scheduler=scheduler,
+        )
+
         app.state.settings = settings
-        app.state.sessions = make_session_factory(engine)
+        app.state.sessions = sessions
+        app.state.events = events
+        app.state.ws_manager = ws_manager
+        app.state.scheduler = scheduler
+        app.state.llm_router = llm_router
+        app.state.plugin_manager = plugin_manager
         app.state.persona = Persona.load(settings.root / "config" / "persona.yaml")
-        app.state.llm_router = LLMRouter(settings.llm)
         app.state.agent = AgentEngine(
-            router=app.state.llm_router,
+            router=llm_router,
             persona=app.state.persona,
-            session_factory=app.state.sessions,
+            session_factory=sessions,
+            plugin_manager=plugin_manager,
             history_limit=int(settings.chat.get("history_limit", 30)),
         )
+
+        # 通知ルーティング(notification.send → web へ配送)
+        NotificationRouter(
+            events,
+            (settings.config.get("notifications") or {}).get("routes"),
+            ws_manager,
+        )
+
+        await plugin_manager.setup()
+        scheduler.start()
         yield
-        await app.state.llm_router.close()
+        scheduler.shutdown()
+        await llm_router.close()
         await engine.dispose()
 
     app = FastAPI(title="shion-ai", lifespan=lifespan)
@@ -54,6 +88,12 @@ def create_app() -> FastAPI:
         conversations.router,
         prefix="/api",
         tags=["conversations"],
+        dependencies=[Depends(auth.require_auth)],
+    )
+    app.include_router(
+        plugins.router,
+        prefix="/api",
+        tags=["plugins"],
         dependencies=[Depends(auth.require_auth)],
     )
     app.include_router(ws.router, prefix="/api")
