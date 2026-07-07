@@ -21,10 +21,20 @@ from shion.core.agent import AgentEngine
 from shion.core.events import EventBus
 from shion.core.memory import MemoryManager
 from shion.core.notifications import NotificationRouter
+from shion.core.oauth_store import OAuthTokenStore
 from shion.core.persona import Persona
 from shion.core.scheduler import Scheduler
+from shion.core.usage import UsageRecorder
 from shion.db.session import init_db, make_engine, make_session_factory
-from shion.interfaces.web import auth, conversations, memories, plugins, ws
+from shion.interfaces.web import (
+    auth,
+    conversations,
+    dashboard,
+    google_oauth,
+    memories,
+    plugins,
+    ws,
+)
 from shion.interfaces.web.ws_manager import WSManager
 from shion.llm import LLMRouter
 from shion.plugins import PluginManager
@@ -47,12 +57,16 @@ def create_app() -> FastAPI:
         ws_manager = WSManager()
         scheduler = Scheduler(sessions)
         llm_router = LLMRouter(settings.llm)
+        usage_recorder = UsageRecorder(sessions, settings.llm.get("pricing"))
+        llm_router.set_usage_recorder(usage_recorder)
+        oauth_store = OAuthTokenStore(sessions, settings.secret_key)
         plugin_manager = PluginManager(
             plugins_dir=settings.root / "plugins",
             session_factory=sessions,
             llm=llm_router,
             events=events,
             scheduler=scheduler,
+            oauth_store=oauth_store,
         )
 
         app.state.settings = settings
@@ -61,6 +75,8 @@ def create_app() -> FastAPI:
         app.state.ws_manager = ws_manager
         app.state.scheduler = scheduler
         app.state.llm_router = llm_router
+        app.state.usage_recorder = usage_recorder
+        app.state.oauth_store = oauth_store
         app.state.plugin_manager = plugin_manager
         memory = MemoryManager(sessions, llm_router)
         app.state.memory = memory
@@ -134,6 +150,18 @@ def create_app() -> FastAPI:
         memories.router,
         prefix="/api",
         tags=["memories"],
+        dependencies=[Depends(auth.require_auth)],
+    )
+    app.include_router(
+        dashboard.router,
+        prefix="/api",
+        tags=["dashboard"],
+        dependencies=[Depends(auth.require_auth)],
+    )
+    app.include_router(
+        google_oauth.router,
+        prefix="/api",
+        tags=["google"],
         dependencies=[Depends(auth.require_auth)],
     )
     app.include_router(ws.router, prefix="/api")

@@ -174,8 +174,8 @@ class MemoryManager:
 
     async def extract_from_exchange(self, user_text: str, reply_text: str) -> int:
         """1往復の会話から記憶を抽出して保存し、保存件数を返す"""
-        if self._llm.primary_spec("memory").startswith("mock/"):
-            return 0  # モックLLMでは抽出できない
+        if not self._llm.has_real_llm("memory"):
+            return 0  # モックLLMしか使えない環境では抽出できない
 
         conversation = f"ユーザー: {user_text}\n紫桜: {reply_text}"
         prompt = EXTRACT_PROMPT.replace("{conversation}", conversation)

@@ -117,6 +117,15 @@ class PluginStorage:
             await db.commit()
 
 
+class _MissingOAuthStore:
+    """oauth store 未注入時のプレースホルダ。使おうとした時点で分かりやすく失敗させる"""
+
+    def __getattr__(self, name: str):
+        if name in ("save", "load", "delete"):  # 実際に使おうとした時だけ明確に失敗させる
+            raise RuntimeError("OAuthトークンストアが利用できません(コアの初期化を確認)")
+        raise AttributeError(name)  # inspect等の内省は通常のAttributeErrorで素通し
+
+
 @dataclass
 class PluginContext:
     name: str
@@ -124,6 +133,7 @@ class PluginContext:
     llm: LLMRouter | None = None
     events: EventBus | None = None
     storage: PluginStorage | None = None
+    oauth: Any = None  # OAuthTokenStore(外部サービス連携プラグイン用)
 
 
 class PluginBase:
@@ -156,6 +166,15 @@ class PluginBase:
         assert self._ctx.llm is not None
         return self._ctx.llm
 
+    @property
+    def oauth(self):
+        """OAuthトークンストア(save/load/delete)。連携はWeb UIのOAuthフローで行う。
+
+        注: assert ではなく遅延エラーにする(inspect.getmembers がプロパティを
+        評価するため、未注入でもプロパティ参照自体は失敗させない)
+        """
+        return self._ctx.oauth if self._ctx.oauth is not None else _MissingOAuthStore()
+
     async def notify(
         self,
         title: str,
@@ -184,3 +203,12 @@ class PluginBase:
 
     async def on_unload(self) -> None:
         pass
+
+    # --- ダッシュボード(📊)への表示。任意でオーバーライドする ---
+
+    async def dashboard(self) -> dict | None:
+        """📊ダッシュボードに出すカードを返す。表示しないなら None(既定)。
+
+        形式: {"title": str, "items": [{"text": str, "url": str | None}], "footer": str | None}
+        """
+        return None

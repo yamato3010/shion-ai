@@ -23,8 +23,8 @@ class FakeRouter:
             return None
         return [self.vectors.get(t, [0.0, 0.0, 1.0]) for t in texts]
 
-    def primary_spec(self, purpose="chat"):
-        return "fake/model"
+    def has_real_llm(self, purpose="chat"):
+        return True
 
     async def stream(self, messages, purpose="chat", tools=None, **params):
         self.stream_calls += 1
@@ -105,7 +105,7 @@ def test_extract_from_exchange(sessions):
 def test_extract_skipped_on_mock(sessions):
     async def scenario():
         router = FakeRouter(vectors={})
-        router.primary_spec = lambda purpose="chat": "mock/echo"
+        router.has_real_llm = lambda purpose="chat": False
         mm = MemoryManager(sessions, router)
         saved = await mm.extract_from_exchange("こんにちは", "やっほー")
         assert saved == 0

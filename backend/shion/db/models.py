@@ -68,6 +68,35 @@ class Memory(Base):
     last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class UsageLog(Base):
+    """LLM呼び出しの使用量記録(docs/04 §3)。コストは単価表からの概算"""
+
+    __tablename__ = "usage_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    model: Mapped[str] = mapped_column(String(64))
+    purpose: Mapped[str] = mapped_column(String(24), index=True)  # chat | summarize | memory | embedding
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0)
+    cost_estimate: Mapped[float] = mapped_column(default=0.0)  # USD
+    estimated: Mapped[bool] = mapped_column(default=False)  # プロバイダがusage未報告で文字数から概算
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class OAuthToken(Base):
+    """外部サービスのOAuthトークン(暗号化して保存。docs/08)"""
+
+    __tablename__ = "oauth_tokens"
+
+    provider: Mapped[str] = mapped_column(String(32), primary_key=True)  # 例: google
+    access_token_enc: Mapped[str] = mapped_column(Text)
+    refresh_token_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scopes: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class Message(Base):
     __tablename__ = "messages"
 

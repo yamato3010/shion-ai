@@ -12,6 +12,9 @@ llm:
       # Gemini は OpenAI 互換エンドポイントを利用
       api_key: ${GEMINI_API_KEY}
       base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    anthropic:
+      # Claude はネイティブAPI(type: anthropic は名前から自動判定される)
+      api_key: ${ANTHROPIC_API_KEY}
     ollama:
       api_key: ollama # ダミー値(Ollamaはキー不要)
       base_url: http://localhost:11434/v1
@@ -19,17 +22,25 @@ llm:
   # 用途別モデル割当。"provider/model" 形式(docs/04_llm_provider.md)
   # 例: gemini/gemini-2.0-flash, ollama/qwen3:8b
   models:
-    chat: openai/gpt-4o-mini
+    chat: ollama/nadeshiko:v1
+    # chat: openai/gpt-4o-mini
     # 記憶抽出(裏方処理。安いモデルやローカルLLM推奨。未指定なら chat と同じ)
-    memory: openai/gpt-4o-mini
+    memory: ollama/nadeshiko:v1
+    # ニュース要約などの大量・低単価用途(未指定なら chat と同じ)
+    summarize: ollama/nadeshiko:v1
     # 長期記憶の類似検索用の埋め込みモデル。
     # 未設定・キー無しの場合はキーワード検索にフォールバックする。
+    # ローカルで完結させるなら: ollama/nomic-embed-text(`ollama pull nomic-embed-text`)
     embedding: openai/text-embedding-3-small
 
   # chat モデルが使えないときのフォールバック順。
   # mock/echo は APIキー無しで動作確認するための組み込みモック。
   fallback:
     - mock/echo
+
+  # コスト概算の単価表の上書き・追加(USD / 100万トークン)。主要モデルは組み込み済み。
+  # pricing:
+  #   openai/gpt-4o-mini: { in: 0.15, out: 0.60 }
 
 chat:
   # 応答生成時にコンテキストへ含める直近メッセージ数

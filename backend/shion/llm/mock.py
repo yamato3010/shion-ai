@@ -31,4 +31,12 @@ class MockProvider(LLMProvider):
         for i in range(0, len(reply), 6):
             await asyncio.sleep(0.03)
             yield GenerationChunk(text=reply[i : i + 6])
-        yield GenerationChunk(finish_reason="stop")
+        # 実プロバイダ同様に最終チャンクでusageを報告する(使用量記録の動作確認用)
+        prompt_chars = sum(len(m.content or "") for m in messages)
+        yield GenerationChunk(
+            finish_reason="stop",
+            usage={
+                "prompt_tokens": max(1, prompt_chars // 3),
+                "completion_tokens": max(1, len(reply) // 3),
+            },
+        )

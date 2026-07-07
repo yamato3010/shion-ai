@@ -1,4 +1,12 @@
-import type { ChatMessage, Conversation, JobLogEntry, Memory, PluginInfo } from "../types";
+import type {
+  ChatMessage,
+  Conversation,
+  DashboardData,
+  GoogleStatus,
+  JobLogEntry,
+  Memory,
+  PluginInfo,
+} from "../types";
 
 class ApiError extends Error {
   constructor(
@@ -88,3 +96,12 @@ export const addMemory = (content: string, category: string) =>
 
 export const deleteMemory = (id: number) =>
   api<{ ok: boolean }>(`/api/memories/${id}`, { method: "DELETE" });
+
+// --- ダッシュボード / Google連携 ---
+
+export const getDashboard = () => api<DashboardData>("/api/dashboard");
+
+export const getGoogleStatus = () => api<GoogleStatus>("/api/google/status");
+
+export const disconnectGoogle = () =>
+  api<{ ok: boolean }>("/api/google/disconnect", { method: "POST" });

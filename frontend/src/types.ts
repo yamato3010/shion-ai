@@ -74,6 +74,48 @@ export interface Memory {
   last_accessed_at: string | null;
 }
 
+export interface DashboardCardItem {
+  text: string;
+  url?: string | null;
+}
+
+export interface DashboardCard {
+  plugin: string;
+  title: string;
+  items: DashboardCardItem[];
+  footer?: string | null;
+}
+
+export interface UsageEntry {
+  date: string;
+  provider: string;
+  model: string;
+  purpose: string;
+  tokens_in: number;
+  tokens_out: number;
+  cost: number;
+  calls: number;
+  has_estimate: boolean;
+}
+
+export interface UsageSummary {
+  days: number;
+  total_cost: number;
+  today_cost: number;
+  total_calls: number;
+  entries: UsageEntry[];
+}
+
+export interface DashboardData {
+  cards: DashboardCard[];
+  usage: UsageSummary;
+}
+
+export interface GoogleStatus {
+  configured: boolean;
+  connected: boolean;
+}
+
 export interface JobLogEntry {
   id: number;
   job_name: string;

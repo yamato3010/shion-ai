@@ -71,8 +71,9 @@ class Scheduler:
                 await db.commit()
                 log_id = log.id
             try:
-                await func()
-                status, detail = "success", None
+                result = await func()
+                # ジョブが文字列を返したら実行サマリとしてログに残す(例: "8件配信")
+                status, detail = "success", str(result)[:1000] if isinstance(result, str) else None
             except Exception as e:  # noqa: BLE001 - Job失敗はログに記録して継続(docs/03 障害隔離)
                 logger.exception("ジョブ %s.%s が失敗", plugin_name, job_name)
                 status, detail = "error", str(e)[:1000]

@@ -1,0 +1,32 @@
+name: news
+display_name: "ニュース"
+version: 1.0.0
+description: "RSSフィードからニュースを収集し、興味トピックでフィルタして朝刊/夕刊ダイジェストを配信"
+author: yamato
+api_version: 1
+config_schema:
+  feeds:
+    type: list
+    default:
+      - https://news.yahoo.co.jp/rss/topics/top-picks.xml
+      - https://b.hatena.ne.jp/hotentry/it.rss
+      - https://zenn.dev/feed
+    description: "巡回するRSS/AtomフィードのURL"
+  interests:
+    type: list
+    default: ["AI・機械学習", "ソフトウェア開発"]
+    description: "興味トピック(キーワード+埋め込み類似度フィルタに使用)"
+  morning_time:
+    type: string
+    default: "07:00"
+    description: "朝刊ダイジェストの時刻"
+  evening_time:
+    type: string
+    default: "19:00"
+    description: "夕刊ダイジェストの時刻"
+  max_items_per_digest:
+    type: integer
+    default: 8
+    description: "1回のダイジェストに載せる最大記事数"
+permissions:
+  - network

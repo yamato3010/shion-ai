@@ -107,12 +107,14 @@ class PluginManager:
         llm: LLMRouter,
         events: EventBus,
         scheduler: Scheduler,
+        oauth_store=None,
     ) -> None:
         self._dir = plugins_dir
         self._sessions = session_factory
         self._llm = llm
         self._events = events
         self._scheduler = scheduler
+        self._oauth = oauth_store
         self.plugins: dict[str, PluginInfo] = {}
         self._tools: dict[str, RegisteredTool] = {}
         self._commands: dict[str, RegisteredCommand] = {}
@@ -182,6 +184,7 @@ class PluginManager:
                 llm=self._llm,
                 events=self._events,
                 storage=PluginStorage(self._sessions, info.name),
+                oauth=self._oauth,
             )
             instance = self._instantiate(info, ctx)
             await instance.on_load()
@@ -271,6 +274,28 @@ class PluginManager:
         if registered is None:
             raise KeyError(f"ツール '{tool_name}' は存在しません")
         return await asyncio.wait_for(registered.fn(**args), timeout=TOOL_TIMEOUT_SEC)
+
+    # --- ダッシュボードカード収集(📊画面から利用) ---
+
+    async def get_dashboard_cards(self) -> list[dict]:
+        """dashboard() を実装しているロード済みプラグインからカードを集める"""
+        cards: list[dict] = []
+        for info in self.plugins.values():
+            instance = info.instance
+            if instance is None:
+                continue
+            if type(instance).dashboard is PluginBase.dashboard:
+                continue  # オーバーライドしていない
+            try:
+                card = await asyncio.wait_for(instance.dashboard(), timeout=TOOL_TIMEOUT_SEC)
+            except Exception as e:  # noqa: BLE001 - 1枚の失敗で画面全体を壊さない
+                logger.exception("プラグイン %s の dashboard() が失敗", info.name)
+                card = {"title": info.display_name, "items": [], "footer": f"⚠ 取得失敗: {e}"}
+            if card:
+                card["plugin"] = info.name
+                card.setdefault("title", info.display_name)
+                cards.append(card)
+        return cards
 
     # --- コマンド実行(Discordアダプタから利用) ---
 

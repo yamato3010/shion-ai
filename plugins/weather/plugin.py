@@ -85,6 +85,20 @@ class WeatherPlugin(PluginBase):
             body += " 傘を忘れずにね☂️"
         await self.notify(title="今日の天気", body=body, channel="daily")
 
+    async def dashboard(self) -> dict:
+        forecast = await self.get_weather()
+        items = [
+            {
+                "text": (
+                    f"{d['date']} {d['weather']} "
+                    f"{d['temp_max']}℃/{d['temp_min']}℃ 降水{d['precipitation_prob']}%"
+                ),
+                "url": None,
+            }
+            for d in forecast["days"]
+        ]
+        return {"title": f"⛅ {forecast['location']}の天気", "items": items, "footer": None}
+
     async def _geocode(self, location: str) -> dict:
         resp = await self._client.get(
             GEOCODING_URL,

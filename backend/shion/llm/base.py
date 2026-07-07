@@ -39,6 +39,11 @@ class LLMError(Exception):
 class LLMProvider(ABC):
     name: str = "base"
 
+    @property
+    def available(self) -> bool:
+        """呼び出せる見込みがあるか(APIキー未設定なら False)"""
+        return True
+
     @abstractmethod
     def generate(
         self,

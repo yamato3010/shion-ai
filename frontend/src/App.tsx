@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { logout, me } from "./api/client";
 import { ChatSocket, openChatSocket } from "./api/ws";
 import ChatPage from "./components/ChatPage";
+import DashboardPage from "./components/DashboardPage";
 import Login from "./components/Login";
 import MemoriesPage from "./components/MemoriesPage";
 import PluginsPage from "./components/PluginsPage";
 import type { ServerEvent } from "./types";
 
 type AuthState = "loading" | "anonymous" | "authenticated";
-type Page = "chat" | "memories" | "plugins";
+type Page = "chat" | "dashboard" | "memories" | "plugins";
 
 interface Toast {
   id: number;
@@ -73,6 +74,13 @@ function MainShell({ onLogout }: { onLogout: () => void }) {
           💬
         </button>
         <button
+          className={`nav-item ${page === "dashboard" ? "is-active" : ""}`}
+          title="ダッシュボード"
+          onClick={() => setPage("dashboard")}
+        >
+          📊
+        </button>
+        <button
           className={`nav-item ${page === "memories" ? "is-active" : ""}`}
           title="長期記憶"
           onClick={() => setPage("memories")}
@@ -96,6 +104,7 @@ function MainShell({ onLogout }: { onLogout: () => void }) {
         <div style={{ display: page === "chat" ? "contents" : "none" }}>
           <ChatPage socketRef={socketRef} chatHandlerRef={chatHandlerRef} />
         </div>
+        {page === "dashboard" && <DashboardPage />}
         {page === "memories" && <MemoriesPage />}
         {page === "plugins" && <PluginsPage />}
       </div>

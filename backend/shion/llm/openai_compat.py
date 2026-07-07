@@ -27,6 +27,10 @@ class OpenAICompatProvider(LLMProvider):
             timeout=httpx.Timeout(120.0, connect=10.0),
         )
 
+    @property
+    def available(self) -> bool:
+        return bool(self._api_key)
+
     async def generate(
         self,
         messages: list[Message],
