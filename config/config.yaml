@@ -57,6 +57,7 @@ voice:
 # Discord Bot(.env に DISCORD_BOT_TOKEN を設定すると起動する)
 discord:
   # あなたのDiscordユーザーID(開発者モードでプロフィール右クリック→IDコピー)。
+  # 複数人を許可する場合はカンマ区切り(例: DISCORD_OWNER_ID=123,456)。
   # 未設定のままDMすると、設定すべきIDをBotが教えてくれる。
   owner_id: ${DISCORD_OWNER_ID}
   # スラッシュコマンドを即時反映したいサーバーのID(任意)。

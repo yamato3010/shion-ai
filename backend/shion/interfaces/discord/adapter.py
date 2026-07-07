@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 
 import discord
@@ -59,9 +60,17 @@ class DiscordAdapter(discord.Client):
     # --- 設定 ---
 
     @property
-    def owner_id(self) -> int | None:
-        raw = str(self._config.get("owner_id") or "").strip()
-        return int(raw) if raw.isdigit() else None
+    def owner_ids(self) -> set[int]:
+        """許可されたオーナーのユーザーID群。
+
+        `discord.owner_id`(env: DISCORD_OWNER_ID)はカンマ/空白区切りで
+        複数指定できる。例: `123,456` や `123 456`。
+        """
+        raw = str(self._config.get("owner_id") or "")
+        return {int(p) for p in re.split(r"[\s,]+", raw.strip()) if p.isdigit()}
+
+    def _is_owner(self, user_id: int) -> bool:
+        return user_id in self.owner_ids
 
     # --- 起動・停止 ---
 
@@ -87,7 +96,7 @@ class DiscordAdapter(discord.Client):
 
     async def on_ready(self) -> None:
         logger.info("Discord Bot ログイン完了: %s (id=%s)", self.user, self.user.id)
-        if self.owner_id is None:
+        if not self.owner_ids:
             logger.warning("discord.owner_id が未設定。DMで案内を返します")
 
     # --- 対話 ---
@@ -108,13 +117,13 @@ class DiscordAdapter(discord.Client):
         if not text:
             return
 
-        if self.owner_id is None:
+        if not self.owner_ids:
             await message.channel.send(
                 "オーナーが未設定だよ。`config/config.yaml` の `discord.owner_id` に "
-                f"`{message.author.id}` を設定して再起動してね。"
+                f"`{message.author.id}` を設定して再起動してね(複数人はカンマ区切り)。"
             )
             return
-        if message.author.id != self.owner_id:
+        if not self._is_owner(message.author.id):
             return  # オーナー以外には反応しない(docs/08)
 
         try:
@@ -167,13 +176,12 @@ class DiscordAdapter(discord.Client):
     # --- 通知(NotificationRouter から呼ばれる) ---
 
     async def send_notification(self, payload: dict) -> None:
-        if self.owner_id is None:
+        if not self.owner_ids:
             logger.warning("discord.owner_id 未設定のためDM通知をスキップ")
             return
         if not self.is_ready():
             logger.warning("Discord Bot 未接続のためDM通知をスキップ")
             return
-        user = self.get_user(self.owner_id) or await self.fetch_user(self.owner_id)
         embed = discord.Embed(
             title=(payload.get("title") or "")[:256],
             description=(payload.get("body") or "")[:4000],
@@ -183,16 +191,26 @@ class DiscordAdapter(discord.Client):
         plugin = payload.get("plugin")
         if plugin:
             embed.set_footer(text=f"🌸 紫桜 / {plugin}")
-        await user.send(embed=embed)
+        for oid in self.owner_ids:
+            try:
+                user = self.get_user(oid) or await self.fetch_user(oid)
+                await user.send(embed=embed)
+            except Exception:  # noqa: BLE001 - 一人失敗しても他のオーナーへは届ける
+                logger.exception("DM通知の送信に失敗(owner_id=%s)", oid)
 
     async def send_proactive(self, text: str, emotion: str | None = None) -> None:
         """紫桜からの自発的発話をオーナーDMへ届ける(ProactiveSpeaker から呼ばれる)"""
-        if self.owner_id is None or not self.is_ready():
+        if not self.owner_ids or not self.is_ready():
             logger.debug("Discord未接続のためプロアクティブ発話をスキップ")
             return
-        user = self.get_user(self.owner_id) or await self.fetch_user(self.owner_id)
-        for part in split_message(f"{emotion_prefix(emotion)} {text}"):
-            await user.send(part)
+        parts = split_message(f"{emotion_prefix(emotion)} {text}")
+        for oid in self.owner_ids:
+            try:
+                user = self.get_user(oid) or await self.fetch_user(oid)
+                for part in parts:
+                    await user.send(part)
+            except Exception:  # noqa: BLE001 - 一人失敗しても他のオーナーへは届ける
+                logger.exception("プロアクティブ発話の送信に失敗(owner_id=%s)", oid)
 
     # --- スラッシュコマンド ---
 
@@ -249,7 +267,7 @@ class DiscordAdapter(discord.Client):
         )
 
     async def _allow(self, interaction: discord.Interaction) -> bool:
-        if self.owner_id is not None and interaction.user.id == self.owner_id:
+        if self._is_owner(interaction.user.id):
             return True
         await interaction.response.send_message(
             "ごめんね、オーナー以外の指示は受けられないの。", ephemeral=True
