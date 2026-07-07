@@ -1,0 +1,43 @@
+# shion-ai(docs/02 §3)
+#   基本:            docker compose up -d --build
+#   ローカルLLM込み:  docker compose --profile ollama up -d
+#   音声合成込み:     docker compose --profile voice up -d
+#
+# コンテナ内から同居サービスを使う場合は config/config.yaml を書き換える:
+#   ollama の base_url:  http://ollama:11434/v1
+#   voice の engine_url: http://voicevox:50021
+
+services:
+  shion:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # colima等のQEMU系VMだとOpenSSLのARM拡張命令がSIGILL(exit 132)になるための回避。
+      # 実Linuxサーバー・Docker Desktopでは削除してよい(暗号処理のHW支援が有効になる)
+      OPENSSL_armcap: "0"
+    volumes:
+      - ./config:/srv/shion/config:ro
+      - ./plugins:/srv/shion/plugins:ro
+      - ./data:/srv/shion/data
+    restart: unless-stopped
+
+  # ローカルLLM(任意。モデル取得: docker compose exec ollama ollama pull qwen3:8b)
+  ollama:
+    image: ollama/ollama
+    profiles: [ollama]
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+
+  # VOICEVOX 音声合成エンジン(任意・CPU版)
+  voicevox:
+    image: voicevox/voicevox_engine:cpu-ubuntu20.04-latest
+    profiles: [voice]
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
