@@ -53,6 +53,25 @@ def test_event_start_and_format():
     assert "(無題の予定)" in gw.format_event({"start": {"date": "2026-07-07"}})
 
 
+def test_task_helpers():
+    assert gw.due_to_rfc3339("") is None
+    assert gw.due_to_rfc3339("2026-07-10") == "2026-07-10T00:00:00.000Z"
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError):
+        gw.due_to_rfc3339("あした")
+
+    assert gw.format_task({"title": "牛乳を買う"}) == "牛乳を買う"
+    assert gw.format_task({"title": "レポート", "due": "2026-07-10T00:00:00.000Z"}) == "レポート(期限 2026-07-10)"
+    assert gw.format_task({}) == "(無題)"
+
+
+def test_escape_drive_query():
+    assert gw.escape_drive_query("it's a test") == "it\\'s a test"
+    assert gw.escape_drive_query("a\\b") == "a\\\\b"
+    assert gw.escape_drive_query("普通の検索") == "普通の検索"
+
+
 def test_to_rfc3339():
     out = gw.to_rfc3339("2026-07-07 10:00")
     assert out.startswith("2026-07-07T10:00:00")

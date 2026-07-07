@@ -31,6 +31,8 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/tasks",
+    "https://www.googleapis.com/auth/drive.readonly",
 ]
 PROVIDER = "google"
 

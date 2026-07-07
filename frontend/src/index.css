@@ -1135,3 +1135,78 @@ button {
   color: var(--text-dim);
   margin-left: 4px;
 }
+
+/* ===== VRM立ち絵 ===== */
+.vrm-stage {
+  width: 100%;
+  height: 100%;
+}
+
+.vrm-stage canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* VRMカメラ調整(⚙で開閉) */
+.character-stage {
+  position: relative;
+}
+
+.vrm-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.vrm-gear {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 0.95rem;
+  opacity: 0.4;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.character-stage:hover .vrm-gear,
+.vrm-gear.is-open {
+  opacity: 1;
+}
+
+.vrm-gear.is-open {
+  transform: rotate(90deg);
+  border-color: var(--murasaki);
+}
+
+.vrm-camera-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 8px 6px;
+}
+
+.vrm-camera-panel button {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  font-size: 0.85rem;
+}
+
+.vrm-camera-panel button:hover:not(:disabled) {
+  border-color: var(--murasaki);
+}
+
+.vrm-camera-panel button:disabled {
+  opacity: 0.35;
+}

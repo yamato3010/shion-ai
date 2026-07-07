@@ -1,11 +1,15 @@
 """Google連携プラグイン(docs/06)
 
-Gmail / Google Calendar を REST(httpx)で直接叩く。認証はコアのOAuthフロー
+Gmail / Calendar / Tasks / Drive を REST(httpx)で直接叩く。認証はコアのOAuthフロー
 (Web UIの📊タブ →「Googleと連携」)で保存されたトークンを oauth ストアから
 取得し、期限切れは refresh_token で自動更新する。
 
 - Tool: get_events / create_event / search_emails / get_unread_summary
+        list_tasks / add_task / complete_task / search_drive
 - Job:  morning_briefing(毎朝)/ mail_watch(5分間隔)/ event_reminder(15分間隔)
+
+注: Tasks / Drive はスコープ追加のため、以前に連携済みの場合は一度連携を
+解除して再連携する必要がある(403エラーはツールが案内を返す)。
 """
 
 from __future__ import annotations
@@ -19,7 +23,11 @@ from shion.plugins import PluginBase, daily_cron, job, tool
 
 GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1"
 CAL_BASE = "https://www.googleapis.com/calendar/v3"
+TASKS_BASE = "https://tasks.googleapis.com/tasks/v1"
+DRIVE_BASE = "https://www.googleapis.com/drive/v3"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
+
+RECONNECT_HINT = "権限が不足しています。📊タブでGoogle連携を一度解除して再連携してください(Tasks/Driveのスコープ追加のため)"
 
 NOTIFIED_MAIL_KEY = "notified_mail_ids"
 REMINDED_EVENT_KEY = "reminded_events"
@@ -91,6 +99,26 @@ def to_rfc3339(local_str: str) -> str:
     return dt.astimezone().isoformat()
 
 
+def due_to_rfc3339(due: str) -> str | None:
+    """Tasks APIのdue("YYYY-MM-DD")をRFC3339に変換。空・不正は None"""
+    due = due.strip()
+    if not due:
+        return None
+    dt = datetime.strptime(due[:10], "%Y-%m-%d")  # 不正な形式は ValueError
+    return dt.strftime("%Y-%m-%dT00:00:00.000Z")  # Tasksは日付部分のみ意味を持つ
+
+
+def format_task(task: dict) -> str:
+    title = task.get("title") or "(無題)"
+    due = (task.get("due") or "")[:10]
+    return f"{title}(期限 {due})" if due else title
+
+
+def escape_drive_query(text: str) -> str:
+    """Drive検索クエリ文字列のエスケープ(シングルクォートとバックスラッシュ)"""
+    return text.replace("\\", "\\\\").replace("'", "\\'")
+
+
 class GoogleWorkspacePlugin(PluginBase):
     async def on_load(self):
         self.client = httpx.AsyncClient(timeout=20.0)
@@ -136,22 +164,27 @@ class GoogleWorkspacePlugin(PluginBase):
         )
         return {"access_token": data["access_token"], "refresh_token": refresh_token}
 
-    async def _get(self, url: str, params: dict | None = None) -> dict:
+    async def _request(self, method: str, url: str, params: dict | None = None, body: dict | None = None) -> dict:
         token = await self._access_token()
-        resp = await self.client.get(url, params=params, headers={"Authorization": f"Bearer {token}"})
+        resp = await self.client.request(
+            method, url, params=params, json=body, headers={"Authorization": f"Bearer {token}"}
+        )
         if resp.status_code == 401:  # 失効していたら1回だけリフレッシュして再試行
             token = await self._access_token(force_refresh=True)
-            resp = await self.client.get(url, params=params, headers={"Authorization": f"Bearer {token}"})
+            resp = await self.client.request(
+                method, url, params=params, json=body, headers={"Authorization": f"Bearer {token}"}
+            )
+        if resp.status_code == 403:
+            raise RuntimeError(f"{RECONNECT_HINT}(HTTP 403: {resp.text[:120]})")
         if resp.status_code >= 400:
             raise RuntimeError(f"Google API エラー HTTP {resp.status_code}: {resp.text[:200]}")
-        return resp.json()
+        return resp.json() if resp.content else {}
+
+    async def _get(self, url: str, params: dict | None = None) -> dict:
+        return await self._request("GET", url, params=params)
 
     async def _post(self, url: str, body: dict) -> dict:
-        token = await self._access_token()
-        resp = await self.client.post(url, json=body, headers={"Authorization": f"Bearer {token}"})
-        if resp.status_code >= 400:
-            raise RuntimeError(f"Google API エラー HTTP {resp.status_code}: {resp.text[:200]}")
-        return resp.json()
+        return await self._request("POST", url, body=body)
 
     # --- Calendar ---
 
@@ -229,6 +262,88 @@ class GoogleWorkspacePlugin(PluginBase):
     async def get_unread_summary(self, max_results: int = 5) -> list:
         return await self._fetch_mails("is:unread", max_results)
 
+    # --- Tasks ---
+
+    async def _default_tasklist(self) -> str:
+        data = await self._get(f"{TASKS_BASE}/users/@me/lists", params={"maxResults": 1})
+        lists = data.get("items") or []
+        if not lists:
+            raise RuntimeError("Google Tasks のタスクリストが見つかりません")
+        return lists[0]["id"]
+
+    async def _fetch_tasks(self) -> list[dict]:
+        tasklist = await self._default_tasklist()
+        data = await self._get(
+            f"{TASKS_BASE}/lists/{tasklist}/tasks",
+            params={"showCompleted": "false", "maxResults": 20},
+        )
+        return data.get("items") or []
+
+    @tool(description="Google Tasks の未完了タスク一覧を取得する")
+    async def list_tasks(self) -> list:
+        return [
+            {"title": t.get("title"), "due": (t.get("due") or "")[:10], "notes": t.get("notes", "")}
+            for t in await self._fetch_tasks()
+        ]
+
+    @tool(
+        description=(
+            "Google Tasks にタスクを追加する。due は 'YYYY-MM-DD'(省略可)。"
+            "買い物や作業など「TODOに入れておいて」系の依頼で使う"
+        )
+    )
+    async def add_task(self, title: str, due: str = "") -> dict:
+        body: dict = {"title": title.strip()}
+        try:
+            rfc = due_to_rfc3339(due)
+        except ValueError:
+            return {"error": f"期限の形式が不正です: {due}(YYYY-MM-DD で指定)"}
+        if rfc:
+            body["due"] = rfc
+        tasklist = await self._default_tasklist()
+        created = await self._post(f"{TASKS_BASE}/lists/{tasklist}/tasks", body)
+        return {"added": {"title": created.get("title"), "due": due or None}}
+
+    @tool(description="Google Tasks のタスクを完了にする。title はタスク名(部分一致)")
+    async def complete_task(self, title: str) -> dict:
+        title = title.strip()
+        tasklist = await self._default_tasklist()
+        matches = [t for t in await self._fetch_tasks() if title and title in (t.get("title") or "")]
+        if not matches:
+            return {"error": f"「{title}」に一致する未完了タスクが見つかりません"}
+        if len(matches) > 1:
+            return {"error": "複数一致しました。どれか特定してください", "candidates": [t["title"] for t in matches]}
+        task = matches[0]
+        await self._request(
+            "PATCH",
+            f"{TASKS_BASE}/lists/{tasklist}/tasks/{task['id']}",
+            body={"status": "completed"},
+        )
+        return {"completed": task.get("title")}
+
+    # --- Drive ---
+
+    @tool(description="Google Drive からファイルを検索する(ファイル名・本文の部分一致)。「あの資料どこだっけ」系で使う")
+    async def search_drive(self, query: str, max_results: int = 5) -> list:
+        q = escape_drive_query(query.strip())
+        data = await self._get(
+            f"{DRIVE_BASE}/files",
+            params={
+                "q": f"(name contains '{q}' or fullText contains '{q}') and trashed = false",
+                "pageSize": max(1, min(int(max_results), 10)),
+                "fields": "files(name,webViewLink,modifiedTime,mimeType)",
+                "orderBy": "modifiedTime desc",
+            },
+        )
+        return [
+            {
+                "name": f.get("name"),
+                "url": f.get("webViewLink"),
+                "updated": (f.get("modifiedTime") or "")[:10],
+            }
+            for f in data.get("files") or []
+        ]
+
     # --- Job ---
 
     @job(cron=lambda self: daily_cron(self.config.get("briefing_time") or "07:30"))
@@ -242,15 +357,23 @@ class GoogleWorkspacePlugin(PluginBase):
         start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
         events = await self._fetch_events(start_of_day, start_of_day + timedelta(days=1))
         unread = await self._fetch_mails("is:unread newer_than:2d", 5)
+        try:
+            tasks = await self._fetch_tasks()
+        except RuntimeError:  # Tasksスコープ未付与でもブリーフィング自体は届ける
+            tasks = []
 
         lines = [f"📅 今日の予定({len(events)}件)"]
         lines += [f"・{format_event(e)}" for e in events] or ["・予定なし"]
         lines.append("")
         lines.append(f"📧 未読メール({len(unread)}件)")
         lines += [f"・{m['subject']} — {m['from']}" for m in unread] or ["・未読なし"]
+        if tasks:
+            lines.append("")
+            lines.append(f"📋 未完了タスク({len(tasks)}件)")
+            lines += [f"・{format_task(t)}" for t in tasks[:5]]
 
         await self.notify(title="🌅 おはようブリーフィング", body="\n".join(lines), channel="daily")
-        return f"予定{len(events)}件 / 未読{len(unread)}件"
+        return f"予定{len(events)}件 / 未読{len(unread)}件 / タスク{len(tasks)}件"
 
     @job(cron="*/5 * * * *")
     async def mail_watch(self) -> str:

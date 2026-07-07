@@ -31,6 +31,7 @@ export default function ChatPage({ socketRef, chatHandlerRef }: Props) {
   // 音声(VOICEVOX)。バックエンドで無効なら null のままボタンごと非表示
   const [voiceUsable, setVoiceUsable] = useState(false);
   const [voiceOn, setVoiceOn] = useState(() => localStorage.getItem("shion-voice") === "on");
+  const [speaking, setSpeaking] = useState(false); // VRM立ち絵の口パク用
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -56,10 +57,15 @@ export default function ChatPage({ socketRef, chatHandlerRef }: Props) {
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
-      audio.onended = () => URL.revokeObjectURL(url);
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setSpeaking(false);
+      };
+      audio.onpause = () => setSpeaking(false);
       await audio.play();
+      setSpeaking(true);
     } catch {
-      /* 自動再生ブロック等も無視 */
+      setSpeaking(false); /* 自動再生ブロック等も無視 */
     }
   }, []);
 
@@ -169,7 +175,8 @@ export default function ChatPage({ socketRef, chatHandlerRef }: Props) {
         onNew={newConversation}
         onDelete={removeConversation}
       />
-      <CharacterView emotion={emotion} busy={busy} />
+      {/* 口パクは音声再生中に加え、応答ストリーミング中(=喋っている演出)も行う */}
+      <CharacterView emotion={emotion} busy={busy} speaking={speaking || streaming !== ""} />
       <ChatWindow
         messages={messages}
         streaming={streaming}
