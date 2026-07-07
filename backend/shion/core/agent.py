@@ -32,6 +32,7 @@ class AgentEngine:
         session_factory: async_sessionmaker,
         plugin_manager=None,
         memory: MemoryManager | None = None,
+        events=None,
         history_limit: int = 30,
     ) -> None:
         self._router = router
@@ -39,8 +40,13 @@ class AgentEngine:
         self._sessions = session_factory
         self._plugins = plugin_manager
         self._memory = memory
+        self._events = events  # EventBus(message.received / message.responded を発行)
         self._history_limit = history_limit
         self._bg_tasks: set = set()  # 記憶抽出タスクのGC防止
+
+    async def _publish(self, event: str, payload: dict) -> None:
+        if self._events is not None:
+            await self._events.publish(event, payload)
 
     async def stream_reply(
         self,
@@ -57,6 +63,11 @@ class AgentEngine:
             db.add(Message(conversation_id=conversation.id, role="user", content=text, interface=interface))
             await db.commit()
             history = await self._load_history(db, conversation.id)
+
+        await self._publish(
+            "message.received",
+            {"conversation_id": conversation.id, "interface": interface},
+        )
 
         system_prompt = self._persona.build_system_prompt()
         if self._memory:
@@ -148,11 +159,89 @@ class AgentEngine:
         if self._memory and reply:
             spawn_extraction(self._memory, text, reply, self._bg_tasks)
 
+        await self._publish(
+            "message.responded",
+            {"conversation_id": conversation.id, "interface": interface},
+        )
+
         yield {
             "type": "done",
             "conversation_id": conversation.id,
             "message_id": message_id,
             "emotion": emotion,
+        }
+
+    async def proactive_reply(self, instruction: str) -> dict | None:
+        """プラグイン起点の自発的発話(docs/09 フェーズ4)。
+
+        指示文はプロンプトにのみ使い、会話履歴には保存しない。生成結果は
+        最新の会話に assistant メッセージとして保存する(会話が無ければ新規作成)。
+        戻り値: {conversation_id, message_id, text, emotion} / 生成できなければ None
+        """
+        async with self._sessions() as db:
+            conversation = (
+                await db.execute(select(Conversation).order_by(Conversation.id.desc()).limit(1))
+            ).scalar_one_or_none()
+            if conversation is None:
+                conversation = Conversation(title="紫桜より")
+                db.add(conversation)
+                await db.commit()
+            history = await self._load_history(db, conversation.id)
+
+        system_prompt = self._persona.build_system_prompt()
+        if self._memory:
+            try:
+                memories = await self._memory.search(instruction, k=3)
+                if memories:
+                    system_prompt += "\n\n" + self._memory.format_for_prompt(memories)
+            except Exception:  # noqa: BLE001
+                logger.exception("長期記憶の検索に失敗")
+
+        messages = [
+            LLMMessage(role="system", content=system_prompt),
+            *history,
+            LLMMessage(
+                role="user",
+                content=(
+                    "(これはシステムからの演出指示で、ユーザーの発言ではない。"
+                    "指示文自体には言及せず、あなたから自然に話しかけること)\n"
+                    f"指示: {instruction}\n短く1〜3文で。"
+                ),
+            ),
+        ]
+
+        parser = EmotionTagParser(self._persona.emotions)
+        parts: list[str] = []
+        emotion: str | None = None
+        async for chunk in self._router.stream(messages, purpose="chat"):
+            if chunk.text:
+                out, resolved = parser.feed(chunk.text)
+                if resolved:
+                    emotion = resolved
+                if out:
+                    parts.append(out)
+        parts.append(parser.flush())
+        text = "".join(parts).strip()
+        if not text:
+            return None
+
+        async with self._sessions() as db:
+            msg = Message(
+                conversation_id=conversation.id,
+                role="assistant",
+                content=text,
+                emotion=emotion or "normal",
+                interface="proactive",
+            )
+            db.add(msg)
+            await db.commit()
+            message_id = msg.id
+
+        return {
+            "conversation_id": conversation.id,
+            "message_id": message_id,
+            "text": text,
+            "emotion": emotion or "normal",
         }
 
     async def _run_tool(self, tool_call: dict) -> tuple[str, str]:

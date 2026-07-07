@@ -1,5 +1,11 @@
 import { MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
-import { deleteConversation, getMessages, listConversations } from "../api/client";
+import {
+  deleteConversation,
+  getMessages,
+  getVoiceStatus,
+  listConversations,
+  synthesizeSpeech,
+} from "../api/client";
 import { ChatSocket } from "../api/ws";
 import type { ChatMessage, Conversation, Emotion, ServerEvent } from "../types";
 import CharacterView from "./CharacterView";
@@ -21,6 +27,41 @@ export default function ChatPage({ socketRef, chatHandlerRef }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [runningTool, setRunningTool] = useState<string | null>(null);
   const streamingRef = useRef("");
+
+  // 音声(VOICEVOX)。バックエンドで無効なら null のままボタンごと非表示
+  const [voiceUsable, setVoiceUsable] = useState(false);
+  const [voiceOn, setVoiceOn] = useState(() => localStorage.getItem("shion-voice") === "on");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    getVoiceStatus()
+      .then((s) => setVoiceUsable(s.enabled))
+      .catch(() => setVoiceUsable(false));
+  }, []);
+
+  const toggleVoice = () => {
+    setVoiceOn((prev) => {
+      const next = !prev;
+      localStorage.setItem("shion-voice", next ? "on" : "off");
+      if (!next) audioRef.current?.pause();
+      return next;
+    });
+  };
+
+  const speak = useCallback(async (text: string) => {
+    try {
+      const blob = await synthesizeSpeech(text);
+      if (!blob) return; // エンジン未起動などは黙ってスキップ(音声はおまけ)
+      audioRef.current?.pause();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+    } catch {
+      /* 自動再生ブロック等も無視 */
+    }
+  }, []);
 
   const refreshConversations = useCallback(() => {
     listConversations()
@@ -59,8 +100,21 @@ export default function ChatPage({ socketRef, chatHandlerRef }: Props) {
             { role: "assistant", content, emotion: event.emotion },
           ]);
           setBusy(false);
+          if (voiceOn && voiceUsable && content) speak(content);
           break;
         }
+        case "proactive":
+          // 紫桜からの自発的発話。表示中の会話宛てなら吹き出しとして追加
+          refreshConversations();
+          if (event.conversation_id === currentId) {
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: event.text, emotion: event.emotion },
+            ]);
+            setEmotion(event.emotion);
+          }
+          if (voiceOn && voiceUsable) speak(event.text);
+          break;
         case "error":
           streamingRef.current = "";
           setStreaming("");
@@ -74,7 +128,7 @@ export default function ChatPage({ socketRef, chatHandlerRef }: Props) {
     return () => {
       chatHandlerRef.current = null;
     };
-  }, [chatHandlerRef, refreshConversations]);
+  }, [chatHandlerRef, refreshConversations, currentId, voiceOn, voiceUsable, speak]);
 
   const selectConversation = async (id: number) => {
     setCurrentId(id);
@@ -123,6 +177,9 @@ export default function ChatPage({ socketRef, chatHandlerRef }: Props) {
         error={error}
         runningTool={runningTool}
         onSend={send}
+        voiceUsable={voiceUsable}
+        voiceOn={voiceOn}
+        onToggleVoice={toggleVoice}
       />
     </div>
   );

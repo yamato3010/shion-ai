@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { disconnectGoogle, getDashboard, getGoogleStatus } from "../api/client";
+import {
+  disconnectGoogle,
+  getDashboard,
+  getGoogleStatus,
+  runPluginTool,
+} from "../api/client";
 import type { DashboardData, GoogleStatus, UsageEntry } from "../types";
 
 function formatCost(usd: number): string {
@@ -102,6 +107,31 @@ export default function DashboardPage() {
                     </a>
                   ) : (
                     item.text
+                  )}
+                  {item.actions && (
+                    <span className="item-actions">
+                      {item.rated ? (
+                        <span className="rated-mark">{item.rated === "up" ? "👍" : "👎"} 済</span>
+                      ) : (
+                        item.actions.map((action) => (
+                          <button
+                            key={action.label}
+                            className="item-action-button"
+                            title="興味フィードバック(スコアに反映されます)"
+                            onClick={async () => {
+                              try {
+                                await runPluginTool(card.plugin, action.tool, action.args);
+                                refresh();
+                              } catch {
+                                /* 失敗は無視(次回リトライ可能) */
+                              }
+                            }}
+                          >
+                            {action.label}
+                          </button>
+                        ))
+                      )}
+                    </span>
                   )}
                 </li>
               ))}

@@ -46,6 +46,14 @@ chat:
   # 応答生成時にコンテキストへ含める直近メッセージ数
   history_limit: 30
 
+# 音声合成(VOICEVOX。https://voicevox.hiroshiba.jp/ のエンジンをローカルで起動しておく)
+voice:
+  enabled: true
+  engine_url: http://localhost:50021
+  # 話者ID。エンジン起動中に http://localhost:50021/speakers で一覧を確認できる。
+  # 例: 46=小夜/SAYO, 2=四国めたん, 3=ずんだもん, 14=冥鳴ひまり
+  speaker: 46
+
 # Discord Bot(.env に DISCORD_BOT_TOKEN を設定すると起動する)
 discord:
   # あなたのDiscordユーザーID(開発者モードでプロフィール右クリック→IDコピー)。

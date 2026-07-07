@@ -37,7 +37,14 @@ export type ServerEvent =
   | { type: "tool_status"; name: string; state: "running" | "done" | "error" }
   | { type: "done"; conversation_id: number; message_id: number; emotion: Emotion }
   | { type: "error"; message: string }
-  | { type: "notification"; title: string; body: string; channel: string; url?: string | null };
+  | { type: "notification"; title: string; body: string; channel: string; url?: string | null }
+  | {
+      type: "proactive";
+      conversation_id: number;
+      message_id: number;
+      text: string;
+      emotion: Emotion;
+    };
 
 export interface SchemaField {
   type: string;
@@ -74,9 +81,23 @@ export interface Memory {
   last_accessed_at: string | null;
 }
 
+export interface CardAction {
+  label: string;
+  tool: string;
+  args: Record<string, unknown>;
+}
+
 export interface DashboardCardItem {
   text: string;
   url?: string | null;
+  actions?: CardAction[];
+  rated?: string | null;
+}
+
+export interface VoiceStatus {
+  enabled: boolean;
+  available: boolean;
+  speaker: number;
 }
 
 export interface DashboardCard {

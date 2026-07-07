@@ -1083,3 +1083,55 @@ button {
   font-weight: normal;
   font-size: 0.75rem;
 }
+
+/* ===== 音声(🔊トグル・🎤入力) ===== */
+.input-bar .icon-button {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 1rem;
+  padding: 0 12px;
+  align-self: stretch;
+}
+
+.input-bar .icon-button.is-on {
+  border-color: var(--murasaki);
+}
+
+.input-bar .icon-button.is-listening {
+  border-color: var(--sakura);
+  background: rgba(247, 182, 210, 0.15);
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(247, 182, 210, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(247, 182, 210, 0); }
+}
+
+/* ===== カード内アクション(👍/👎) ===== */
+.item-actions {
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.item-action-button {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  padding: 1px 6px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+.item-action-button:hover {
+  opacity: 1;
+  border-color: var(--murasaki);
+}
+
+.rated-mark {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin-left: 4px;
+}

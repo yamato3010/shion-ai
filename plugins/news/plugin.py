@@ -24,8 +24,10 @@ from shion.plugins import PluginBase, command, daily_cron, job, tool
 
 SEEN_KEY = "seen_hashes"  # 既出記事のURLハッシュ
 ARTICLES_KEY = "articles"  # 蓄積記事(新しい順)
+PROFILE_KEY = "feedback_profile"  # 👍/👎から学習した語の重み {term: weight}
 MAX_SEEN = 3000
 MAX_ARTICLES = 300
+MAX_PROFILE_TERMS = 200
 TIME_FMT = "%Y-%m-%d %H:%M"
 
 # トラッキング系クエリパラメータはURL正規化時に除去する
@@ -96,6 +98,34 @@ def keyword_score(text: str, interests: list[str]) -> float:
         return 0.0
     hits = sum(1 for t in terms if t.lower() in haystack)
     return hits / len(terms)
+
+
+# 内容語の抽出(漢字・カタカナ・英数字の連なり)。フィードバック学習の特徴量に使う
+_TERM_RE = re.compile(r"[一-鿿]{2,}|[ァ-ヶー]{2,}|[a-zA-Z][a-zA-Z0-9+.#-]{2,}")
+
+
+def extract_terms(text: str) -> list[str]:
+    return [t.lower() for t in _TERM_RE.findall(text)]
+
+
+def update_profile(profile: dict, text: str, rating: str) -> dict:
+    """👍/👎された記事の内容語で興味プロファイル(語→重み)を更新する"""
+    delta = 1 if rating == "up" else -1
+    for term in set(extract_terms(text)):
+        profile[term] = max(-5, min(5, profile.get(term, 0) + delta))
+    if len(profile) > MAX_PROFILE_TERMS:  # 重みの小さい語から捨てる
+        profile = dict(
+            sorted(profile.items(), key=lambda kv: abs(kv[1]), reverse=True)[:MAX_PROFILE_TERMS]
+        )
+    return profile
+
+
+def profile_bonus(text: str, profile: dict) -> float:
+    """プロファイルとの一致による加減点(-0.3〜+0.3)"""
+    if not profile:
+        return 0.0
+    matched = sum(profile.get(term, 0) for term in set(extract_terms(text)))
+    return max(-0.3, min(0.3, matched * 0.1))
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -185,7 +215,9 @@ class NewsPlugin(PluginBase):
                     score = max(score, _cosine(self._interest_vec, vecs[0]))
         except Exception:  # noqa: BLE001 - 埋め込み不可はキーワードのみで続行
             pass
-        return score
+        # 👍/👎から学習したプロファイルで加減点
+        profile = await self.storage.get(PROFILE_KEY, {})
+        return max(0.0, min(1.0, score + profile_bonus(text, profile)))
 
     # --- ダイジェスト配信(朝刊・夕刊) ---
 
@@ -248,6 +280,29 @@ class NewsPlugin(PluginBase):
             for a in articles[: max(1, min(int(limit), 10))]
         ]
 
+    @tool(
+        description=(
+            "ニュース記事への興味フィードバックを記録する。rating は 'up'(面白かった)か "
+            "'down'(興味ない)。ユーザーが記事の感想を言ったときに使う"
+        )
+    )
+    async def rate_news(self, url: str, rating: str) -> dict:
+        if rating not in ("up", "down"):
+            return {"error": "rating は 'up' か 'down' で指定してください"}
+        articles: list[dict] = await self.storage.get(ARTICLES_KEY, [])
+        target_hash = url_hash(url)
+        article = next((a for a in articles if a["hash"] == target_hash), None)
+        if article is None:
+            return {"error": "その記事は蓄積されていません"}
+
+        profile = await self.storage.get(PROFILE_KEY, {})
+        profile = update_profile(profile, f"{article['title']} {article.get('summary', '')}", rating)
+        await self.storage.set(PROFILE_KEY, profile)
+        article["rating"] = rating
+        await self.storage.set(ARTICLES_KEY, articles)
+        self.logger.info("フィードバック: %s %s", rating, article["title"][:40])
+        return {"recorded": rating, "title": article["title"], "learned_terms": len(profile)}
+
     @command(name="news", description="ニュースの即時ダイジェスト(トピック指定可)")
     async def news_command(self, text: str = "") -> str:
         found = await self.get_news(topic=text.strip(), limit=8)
@@ -262,6 +317,18 @@ class NewsPlugin(PluginBase):
         top = sorted(articles[:50], key=lambda a: a["score"], reverse=True)[:5]
         return {
             "title": "📰 最新ニュース",
-            "items": [{"text": a["title"], "url": a["url"]} for a in top],
+            "items": [
+                {
+                    "text": a["title"],
+                    "url": a["url"],
+                    # 👍/👎ボタン(汎用アクション: 押すと rate_news ツールが呼ばれる)
+                    "actions": [
+                        {"label": "👍", "tool": "rate_news", "args": {"url": a["url"], "rating": "up"}},
+                        {"label": "👎", "tool": "rate_news", "args": {"url": a["url"], "rating": "down"}},
+                    ],
+                    "rated": a.get("rating"),
+                }
+                for a in top
+            ],
             "footer": f"蓄積 {len(articles)}件" if articles else "まだ記事がありません",
         }

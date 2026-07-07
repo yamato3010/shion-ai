@@ -188,6 +188,16 @@ class PluginBase:
             {"title": title, "body": body, "channel": channel, "url": url, "plugin": self.name},
         )
 
+    async def speak(self, instruction: str) -> None:
+        """紫桜からの自発的発話を依頼する(docs/09 フェーズ4)。
+
+        instruction はLLMへの演出指示(例: 「そろそろ寝る時間。優しく寝るよう促して」)。
+        人格込みの発話生成・会話への保存・Web/Discordへの配信はコアが行う。
+        """
+        from shion.core.proactive import EVENT_SPEAK
+
+        await self.events.publish(EVENT_SPEAK, {"instruction": instruction, "plugin": self.name})
+
     async def llm_text(self, prompt: str, purpose: str = "summarize") -> str:
         """LLMで単発のテキスト生成をする便利メソッド(使用量はコアで一元管理)"""
         parts: list[str] = []

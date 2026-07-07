@@ -64,6 +64,27 @@ def test_keyword_score():
     assert news.keyword_score("なんでも", []) == 0.0
 
 
+def test_feedback_profile_learning():
+    profile = {}
+    profile = news.update_profile(profile, "生成AIエージェントの新フレームワーク", "up")
+    profile = news.update_profile(profile, "プロ野球 順位予想", "down")
+
+    assert news.profile_bonus("AIエージェント入門", profile) > 0
+    assert news.profile_bonus("プロ野球 今日の結果", profile) < 0
+    assert news.profile_bonus("料理レシピまとめ", profile) == 0.0
+    # 加減点は±0.3に収まる
+    for _ in range(10):
+        profile = news.update_profile(profile, "AIエージェント", "up")
+    assert news.profile_bonus("AIエージェント", profile) == 0.3
+
+
+def test_extract_terms():
+    terms = news.extract_terms("Rustで書くWebサーバー入門(2026年版)")
+    assert "rust" in terms
+    assert "サーバー" in terms
+    assert "入門" in terms
+
+
 def test_format_digest():
     articles = [
         {"title": "見出し1", "url": "https://a", "summary": "概要テキスト"},

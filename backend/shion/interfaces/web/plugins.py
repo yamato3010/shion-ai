@@ -86,6 +86,27 @@ async def run_job(name: str, job_name: str, request: Request):
     return {"ok": True}
 
 
+class ToolRunBody(BaseModel):
+    args: dict = {}
+
+
+@router.post("/plugins/{name}/tools/{tool_name}/run")
+async def run_tool(name: str, tool_name: str, body: ToolRunBody, request: Request):
+    """プラグインツールをUIから直接実行する(例: 📊のニュース👍/👎ボタン)"""
+    manager = _manager(request)
+    try:
+        info = manager.plugins[name]
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    if tool_name not in info.tool_names:
+        raise HTTPException(status_code=404, detail=f"ツール '{tool_name}' は {name} にありません")
+    try:
+        result = await manager.execute_tool(tool_name, body.args)
+    except Exception as e:  # noqa: BLE001 - ツール失敗はエラー内容を返す
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return {"result": result}
+
+
 @router.get("/plugins/{name}/logs")
 async def job_logs(name: str, request: Request, limit: int = 20):
     async with request.app.state.sessions() as db:

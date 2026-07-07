@@ -6,6 +6,7 @@ import type {
   JobLogEntry,
   Memory,
   PluginInfo,
+  VoiceStatus,
 } from "../types";
 
 class ApiError extends Error {
@@ -105,3 +106,25 @@ export const getGoogleStatus = () => api<GoogleStatus>("/api/google/status");
 
 export const disconnectGoogle = () =>
   api<{ ok: boolean }>("/api/google/disconnect", { method: "POST" });
+
+export const runPluginTool = (plugin: string, tool: string, args: Record<string, unknown>) =>
+  api<{ result: unknown }>(`/api/plugins/${plugin}/tools/${tool}/run`, {
+    method: "POST",
+    body: JSON.stringify({ args }),
+  });
+
+// --- 音声合成 ---
+
+export const getVoiceStatus = () => api<VoiceStatus>("/api/voice/status");
+
+/** 応答テキストをWAVにする。合成できない環境では null(音声はおまけ機能) */
+export const synthesizeSpeech = async (text: string): Promise<Blob | null> => {
+  const res = await fetch("/api/voice", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) return null;
+  return res.blob();
+};

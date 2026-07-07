@@ -1,0 +1,24 @@
+name: proactive
+display_name: "プロアクティブ会話"
+version: 1.0.0
+description: "紫桜からの自発的な話しかけ。就寝前の声かけと、しばらく会話がないときの雑談"
+author: yamato
+api_version: 1
+config_schema:
+  bedtime:
+    type: string
+    default: "23:30"
+    description: "就寝前の声かけ時刻(空にすると無効)"
+  idle_hours:
+    type: integer
+    default: 6
+    description: "この時間(h)会話がないと様子うかがいの声かけをする(0で無効)"
+  active_start:
+    type: string
+    default: "09:00"
+    description: "声かけしてよい時間帯の開始"
+  active_end:
+    type: string
+    default: "23:00"
+    description: "声かけしてよい時間帯の終了"
+permissions: []

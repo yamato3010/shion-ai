@@ -185,6 +185,15 @@ class DiscordAdapter(discord.Client):
             embed.set_footer(text=f"🌸 紫桜 / {plugin}")
         await user.send(embed=embed)
 
+    async def send_proactive(self, text: str, emotion: str | None = None) -> None:
+        """紫桜からの自発的発話をオーナーDMへ届ける(ProactiveSpeaker から呼ばれる)"""
+        if self.owner_id is None or not self.is_ready():
+            logger.debug("Discord未接続のためプロアクティブ発話をスキップ")
+            return
+        user = self.get_user(self.owner_id) or await self.fetch_user(self.owner_id)
+        for part in split_message(f"{emotion_prefix(emotion)} {text}"):
+            await user.send(part)
+
     # --- スラッシュコマンド ---
 
     def _register_core_commands(self) -> None:

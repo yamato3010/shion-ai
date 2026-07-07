@@ -51,6 +51,12 @@ function MainShell({ onLogout }: { onLogout: () => void }) {
         setToasts((prev) => [...prev, { id, title: ev.title, body: ev.body }]);
         setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 8000);
       } else {
+        if (ev.type === "proactive") {
+          // 紫桜からの自発的発話はトーストでも知らせる(別画面を見ていても気付けるように)
+          const id = ++toastSeq;
+          setToasts((prev) => [...prev, { id, title: "紫桜", body: ev.text }]);
+          setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 8000);
+        }
         chatHandlerRef.current?.(ev);
       }
     });

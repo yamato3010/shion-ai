@@ -23,8 +23,10 @@ from shion.core.memory import MemoryManager
 from shion.core.notifications import NotificationRouter
 from shion.core.oauth_store import OAuthTokenStore
 from shion.core.persona import Persona
+from shion.core.proactive import ProactiveSpeaker
 from shion.core.scheduler import Scheduler
 from shion.core.usage import UsageRecorder
+from shion.core.voice import VoiceSynthesizer
 from shion.db.session import init_db, make_engine, make_session_factory
 from shion.interfaces.web import (
     auth,
@@ -33,6 +35,7 @@ from shion.interfaces.web import (
     google_oauth,
     memories,
     plugins,
+    voice,
     ws,
 )
 from shion.interfaces.web.ws_manager import WSManager
@@ -87,8 +90,10 @@ def create_app() -> FastAPI:
             session_factory=sessions,
             plugin_manager=plugin_manager,
             memory=memory,
+            events=events,
             history_limit=int(settings.chat.get("history_limit", 30)),
         )
+        app.state.voice = VoiceSynthesizer(settings.config.get("voice"))
 
         # 通知ルーティング(notification.send → web / discord_dm へ配送)
         notification_router = NotificationRouter(
@@ -96,6 +101,8 @@ def create_app() -> FastAPI:
             (settings.config.get("notifications") or {}).get("routes"),
             ws_manager,
         )
+        # プロアクティブ発話(speak.request → 生成して web / discord へ配信)
+        proactive_speaker = ProactiveSpeaker(events, app.state.agent, ws_manager)
 
         await plugin_manager.setup()
         scheduler.start()
@@ -116,6 +123,7 @@ def create_app() -> FastAPI:
                 config=settings.config.get("discord") or {},
             )
             notification_router.set_discord(discord_adapter)
+            proactive_speaker.set_discord(discord_adapter)
             discord_task = asyncio.create_task(discord_adapter.run_forever(token))
         else:
             logger.info("DISCORD_BOT_TOKEN 未設定のため Discord Bot は起動しません")
@@ -127,6 +135,7 @@ def create_app() -> FastAPI:
         if discord_task is not None:
             discord_task.cancel()
         scheduler.shutdown()
+        await app.state.voice.close()
         await llm_router.close()
         await engine.dispose()
 
@@ -162,6 +171,12 @@ def create_app() -> FastAPI:
         google_oauth.router,
         prefix="/api",
         tags=["google"],
+        dependencies=[Depends(auth.require_auth)],
+    )
+    app.include_router(
+        voice.router,
+        prefix="/api",
+        tags=["voice"],
         dependencies=[Depends(auth.require_auth)],
     )
     app.include_router(ws.router, prefix="/api")
