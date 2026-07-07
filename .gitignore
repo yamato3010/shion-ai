@@ -15,3 +15,7 @@ frontend/dist/
 
 # misc
 .DS_Store
+
+# vrmファイルを誤ってpushしないようにする
+frontend/public/character/*.vrm
+
