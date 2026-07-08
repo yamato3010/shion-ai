@@ -127,6 +127,8 @@ class AgentEngine:
                             "id": tc["id"],
                             "type": "function",
                             "function": {"name": tc["name"], "arguments": tc["arguments"] or "{}"},
+                            # Gemini 3 の thought_signature 等、プロバイダ固有フィールドを往復させる
+                            **({"extra_content": tc["extra_content"]} if tc.get("extra_content") else {}),
                         }
                         for tc in tool_calls
                     ],

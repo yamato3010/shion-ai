@@ -83,6 +83,11 @@ class OpenAICompatProvider(LLMProvider):
                         )
                         if tc.get("id"):
                             acc["id"] = tc["id"]
+                        # Gemini 3 は tool_call ごとに extra_content.google.thought_signature を
+                        # 返す。これを次リクエストの assistant.tool_calls へそのまま返さないと
+                        # HTTP 400(missing thought_signature)になるため保持する。
+                        if tc.get("extra_content"):
+                            acc["extra_content"] = tc["extra_content"]
                         fn = tc.get("function") or {}
                         if fn.get("name"):
                             acc["name"] = fn["name"]
