@@ -53,7 +53,10 @@ export default function ChatWindow({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    // IME変換中/確定のEnterでは送信しない。isComposingに加え、
+    // IME処理中を示すkeyCode===229も見て環境差を吸収する。
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
     }

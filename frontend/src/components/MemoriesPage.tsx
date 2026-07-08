@@ -62,7 +62,10 @@ export default function MemoriesPage() {
           value={content}
           placeholder="覚えさせたいことを一文で(例: ユーザーは犬を飼っている)"
           onChange={(e) => setContent(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+            if (e.key === "Enter") handleAdd();
+          }}
         />
         <select value={category} onChange={(e) => setCategory(e.target.value)}>
           {Object.entries(CATEGORY_LABEL).map(([value, label]) => (
